@@ -27,3 +27,4 @@ jobs:
           uv run anno --help
           uv run anno ink --help
           uv run anno mind --help
+          uv run anno list
