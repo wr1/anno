@@ -3,7 +3,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -96,7 +95,7 @@ def cmd_open(png: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
     out_png.unlink(missing_ok=True)
 
     print(f"saved  : {svg}")
-    print(f"copied : PNG to clipboard")
+    print("copied : PNG to clipboard")
 
 
 def cmd_screen(notes_dir: str = str(DEFAULT_NOTES_DIR), screenshots_dir: str = str(DEFAULT_SCREENSHOTS_DIR)) -> None:
