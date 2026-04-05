@@ -1,5 +1,9 @@
 # anno
 
+[![CI](https://github.com/wr1/anno/actions/workflows/ci.yml/badge.svg)](https://github.com/wr1/anno/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/wr1/anno)](https://github.com/wr1/anno/releases/latest)
+[![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/)
+
 Quick CLI for annotating figures in Inkscape and building mind maps in Minder.
 
 <img src="help.svg" alt="CLI help output">
