@@ -125,12 +125,49 @@ def _kill_minder() -> bool:
     return False
 
 
+_STYLE_COMMON = (
+    ' branchmargin="100" branchradius="25" linktype="straight" linkwidth="4" linkarrow="false"'
+    ' linkdash="solid" nodeborder="underlined" nodewidth="200" nodeborderwidth="4" nodefill="false"'
+    ' nodemargin="8" nodepadding="6" nodefont="Sans 11" nodemarkup="true" connectiondash="dotted"'
+    ' connectionlwidth="2" connectionarrow="fromto" connectionpadding="3" connectionfont="Sans 10"'
+    ' connectiontwidth="100" calloutfont="Sans 12" calloutpadding="5" calloutptrwidth="20"'
+    ' calloutptrlength="20"'
+)
+_STYLES = (
+    '<style level="0" isset="false" branchmargin="100" branchradius="25" linktype="straight"'
+    ' linkwidth="4" linkarrow="false" linkdash="solid" nodeborder="rounded" nodewidth="200"'
+    ' nodeborderwidth="4" nodefill="false" nodemargin="10" nodepadding="10" nodefont="Sans 11"'
+    ' nodemarkup="true" connectiondash="dotted" connectionlwidth="2" connectionarrow="fromto"'
+    ' connectionpadding="3" connectionfont="Sans 10" connectiontwidth="100" calloutfont="Sans 12"'
+    ' calloutpadding="5" calloutptrwidth="20" calloutptrlength="20"/>'
+    + "".join(f'<style level="{i}" isset="false"{_STYLE_COMMON}/>' for i in range(1, 11))
+)
+
+
 def _make_minder_file(path: Path, title: str) -> None:
+    import xml.sax.saxutils as saxutils
+    safe = saxutils.escape(title)
     path.write_text(
-        f'<minder version="1.0"><theme name="Default" style=""/>'
-        f"<layouts><layout name=\"Default\"/></layouts>"
-        f'<nodes><node id="0" posx="0" posy="0" side="right" fold="false" task="-1" hide_note="true" image-pos="8">'
-        f"<nodename>{title}</nodename></node></nodes></minder>"
+        '<?xml version="1.0"?>\n'
+        '<minder version="1.16.2" parent-etag="0" etag="0">\n'
+        '  <theme name="dark" label="Dark" index="1"/>\n'
+        f'  <styles>{_STYLES}</styles>\n'
+        '  <images/>\n'
+        '  <nodes>\n'
+        '    <node id="0" posx="0" posy="0" width="54" height="49" side="right" fold="false"'
+        ' treesize="49" summarized="false" layout="Horizontal" group="false">\n'
+        '      <style branchmargin="100" branchradius="25" linktype="curved" linkwidth="4"'
+        ' linkarrow="false" linkdash="solid" nodeborder="underlined" nodewidth="200"'
+        ' nodeborderwidth="4" nodefill="false" nodemargin="8" nodepadding="6"'
+        ' nodefont="Sans 11" nodemarkup="true"/>\n'
+        f'      <nodename maxwidth="200"><text data="{safe}"/></nodename>\n'
+        '      <nodenote></nodenote>\n'
+        '    </node>\n'
+        '  </nodes>\n'
+        '  <groups/>\n'
+        '  <stickers/>\n'
+        '  <nodelinks id="0"/>\n'
+        '</minder>\n'
     )
 
 
