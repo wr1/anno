@@ -167,6 +167,7 @@ def _make_minder_file(path: Path, title: str) -> None:
         '  <groups/>\n'
         '  <stickers/>\n'
         '  <nodelinks id="0"/>\n'
+        '  <selected-nodes><node id="0"/></selected-nodes>\n'
         '</minder>\n'
     )
 
