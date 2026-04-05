@@ -134,11 +134,11 @@ def cmd_mind(mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     md_file = out_dir / f"mm_{ts}.md"
 
     _kill_minder()
-    subprocess.run([MINDER, "-o", str(minder_file)], check=True)
+    subprocess.run([MINDER, str(minder_file)], check=True)
     _kill_minder()
 
     result = subprocess.run(
-        [MINDER, "-o", str(minder_file), "--export=markdown"],
+        [MINDER, str(minder_file), "--export=markdown"],
         capture_output=True,
         text=True,
     )
