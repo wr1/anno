@@ -189,7 +189,6 @@ def cmd_mind(note: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
 
     subprocess.run(
         [MINDER, str(minder_file), "--export=markdown", str(md_file)],
-        check=True,
         capture_output=True,
     )
     md = md_file.read_text() if md_file.exists() else ""
