@@ -144,9 +144,7 @@ _STYLES = (
 )
 
 
-def _make_minder_file(path: Path, title: str) -> None:
-    import xml.sax.saxutils as saxutils
-    safe = saxutils.escape(title)
+def _make_minder_file(path: Path) -> None:
     path.write_text(
         '<?xml version="1.0"?>\n'
         '<minder version="1.16.2" parent-etag="0" etag="0">\n'
@@ -160,7 +158,7 @@ def _make_minder_file(path: Path, title: str) -> None:
         ' linkarrow="false" linkdash="solid" nodeborder="underlined" nodewidth="200"'
         ' nodeborderwidth="4" nodefill="false" nodemargin="8" nodepadding="6"'
         ' nodefont="Sans 11" nodemarkup="true"/>\n'
-        f'      <nodename maxwidth="200"><text data="{safe}"/></nodename>\n'
+        '      <nodename maxwidth="200"><text data=""/></nodename>\n'
         '      <nodenote></nodenote>\n'
         '    </node>\n'
         '  </nodes>\n'
@@ -172,17 +170,15 @@ def _make_minder_file(path: Path, title: str) -> None:
     )
 
 
-def cmd_mind(note: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
+def cmd_mind(mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     out_dir = Path(mind_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = note.replace(" ", "_") if note else f"mm_{ts}"
-    minder_file = out_dir / f"{stem}.minder"
-    md_file = out_dir / f"{stem}.md"
+    minder_file = out_dir / f"mm_{ts}.minder"
+    md_file = out_dir / f"mm_{ts}.md"
 
-    title = note if note else "New Map"
-    _make_minder_file(minder_file, title)
+    _make_minder_file(minder_file)
 
     _kill_minder()
     subprocess.run([MINDER, str(minder_file)], check=True)
@@ -295,9 +291,6 @@ mind_cmd = command(
     name="mind",
     help="Open a new mind map in Minder, export markdown to clipboard on exit.",
     callback=cmd_mind,
-    arguments=[
-        argument(name="note", arg_type=str, sort_key=0, optional=True),
-    ],
     options=[_mind_dir_option],
 )
 app.commands.append(mind_cmd)
