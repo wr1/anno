@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from treeparse.utils.color_config import ColorTheme
 
 DEFAULT_NOTES_DIR = Path("notes") / "draw"
 DEFAULT_SCREENSHOTS_DIR = Path.home() / "Pictures" / "Screenshots"
+DEFAULT_MIND_DIR = Path("notes") / "mind"
+MINDER = "com.github.phase1geo.minder"
 
 
 EXPORT_DPI = 300
@@ -55,6 +58,20 @@ def _export_png(svg_path: Path) -> Path:
     return tmp
 
 
+def _copy_text_to_clipboard(text: str) -> None:
+    if shutil.which("xclip"):
+        subprocess.run(
+            ["xclip", "-selection", "clipboard"],
+            input=text,
+            text=True,
+            check=True,
+        )
+    elif sys.platform == "darwin":
+        subprocess.run(["pbcopy"], input=text, text=True, check=True)
+    else:
+        print("clipboard copy not supported on this platform", file=sys.stderr)
+
+
 def _copy_to_clipboard(png_path: Path) -> None:
     if shutil.which("xclip"):
         subprocess.run(
@@ -96,6 +113,42 @@ def cmd_open(png: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
 
     print(f"saved  : {svg}")
     print("copied : PNG to clipboard")
+
+
+def _kill_minder() -> bool:
+    result = subprocess.run(["pgrep", "-f", MINDER], capture_output=True, text=True)
+    pids = result.stdout.strip().splitlines()
+    if pids:
+        subprocess.run(["pkill", "-f", MINDER])
+        time.sleep(1)
+        return True
+    return False
+
+
+def cmd_mind(mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
+    out_dir = Path(mind_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    minder_file = out_dir / f"mm_{ts}.minder"
+    md_file = out_dir / f"mm_{ts}.md"
+
+    _kill_minder()
+    subprocess.run([MINDER, "-o", str(minder_file)], check=True)
+    _kill_minder()
+
+    result = subprocess.run(
+        [MINDER, "-o", str(minder_file), "--export=markdown"],
+        capture_output=True,
+        text=True,
+    )
+    md = result.stdout or ""
+    md_file.write_text(md)
+    _copy_text_to_clipboard(md)
+
+    print(f"saved  : {minder_file}")
+    print(f"saved  : {md_file}")
+    print("copied : markdown to clipboard")
 
 
 def cmd_screen(notes_dir: str = str(DEFAULT_NOTES_DIR), screenshots_dir: str = str(DEFAULT_SCREENSHOTS_DIR)) -> None:
@@ -174,6 +227,23 @@ screen_cmd = command(
     options=[_notes_option, _screenshots_option],
 )
 app.commands.append(screen_cmd)
+
+_mind_dir_option = option(
+    flags=["--mind-dir", "-m"],
+    dest="mind_dir",
+    arg_type=str,
+    default=str(DEFAULT_MIND_DIR),
+    help="Directory to save mind maps",
+    sort_key=10,
+)
+
+mind_cmd = command(
+    name="mind",
+    help="Open a new mind map in Minder, export markdown to clipboard on exit.",
+    callback=cmd_mind,
+    options=[_mind_dir_option],
+)
+app.commands.append(mind_cmd)
 
 list_cmd = command(
     name="list",
