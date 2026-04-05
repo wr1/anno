@@ -211,22 +211,27 @@ def cmd_screen(notes_dir: str = str(DEFAULT_NOTES_DIR), screenshots_dir: str = s
     cmd_open(str(latest), notes_dir)
 
 
-def cmd_list(notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
-    out_dir = Path(notes_dir)
-    if not out_dir.exists():
-        print(f"No annotations found (directory does not exist: {out_dir})")
+def _list_files(label: str, files: list) -> None:
+    if not files:
+        return
+    print(f"{label}:\n")
+    for f in files:
+        mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        size_kb = f.stat().st_size // 1024
+        print(f"  {mtime}  {f.name}  ({size_kb} KB)")
+    print()
+
+
+def cmd_list(notes_dir: str = str(DEFAULT_NOTES_DIR), mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
+    svgs = sorted(Path(notes_dir).glob("*.svg"), key=lambda p: p.stat().st_mtime, reverse=True) if Path(notes_dir).exists() else []
+    minders = sorted(Path(mind_dir).glob("*.minder"), key=lambda p: p.stat().st_mtime, reverse=True) if Path(mind_dir).exists() else []
+
+    if not svgs and not minders:
+        print("No annotations found.")
         return
 
-    svgs = sorted(out_dir.glob("*.svg"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not svgs:
-        print(f"No SVGs in {out_dir}")
-        return
-
-    print(f"Annotations in {out_dir}:\n")
-    for svg in svgs:
-        mtime = datetime.fromtimestamp(svg.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-        size_kb = svg.stat().st_size // 1024
-        print(f"  {mtime}  {svg.name}  ({size_kb} KB)")
+    _list_files(f"Annotations ({notes_dir})", svgs)
+    _list_files(f"Mind maps ({mind_dir})", minders)
 
 
 # --- CLI definition ---
@@ -300,9 +305,9 @@ app.commands.append(mind_cmd)
 
 list_cmd = command(
     name="list",
-    help="List saved annotation SVGs.",
+    help="List saved annotation SVGs and mind maps.",
     callback=cmd_list,
-    options=[_notes_option],
+    options=[_notes_option, _mind_dir_option],
 )
 app.commands.append(list_cmd)
 
