@@ -307,13 +307,13 @@ app.subgroups.append(ink_group)
 mind_group = group(name="mind", help="Mind maps with Minder.")
 mind_group.commands.append(command(
     name="new",
-    help="Open a new blank mind map.",
+    help="Open a new blank mind map in Minder; on close, exports markdown and copies to clipboard.",
     callback=cmd_mind_new,
     options=[_mind_dir_option],
 ))
 mind_group.commands.append(command(
     name="open",
-    help="Open an existing mind map by name.",
+    help="Open an existing mind map by name in Minder; on close, exports markdown and copies to clipboard.",
     callback=cmd_mind_open,
     arguments=[argument(name="name", arg_type=str, sort_key=0)],
     options=[_mind_dir_option],
