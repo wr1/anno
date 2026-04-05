@@ -253,7 +253,7 @@ def cmd_list(notes_dir: str = str(DEFAULT_NOTES_DIR), mind_dir: str = str(DEFAUL
 
 app = cli(
     name="anno",
-    help="Annotate figures and mind maps.",
+    help="Quick CLI for annotating figures in Inkscape and building mind maps in Minder.",
     line_connect=True,
     show_types=False,
     show_defaults=True,
