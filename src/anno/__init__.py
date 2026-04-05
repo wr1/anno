@@ -187,13 +187,12 @@ def cmd_mind(note: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     subprocess.run([MINDER, str(minder_file)], check=True)
     _kill_minder()
 
-    result = subprocess.run(
-        [MINDER, str(minder_file), "--export=markdown"],
+    subprocess.run(
+        [MINDER, str(minder_file), "--export=markdown", str(md_file)],
+        check=True,
         capture_output=True,
-        text=True,
     )
-    md = result.stdout or ""
-    md_file.write_text(md)
+    md = md_file.read_text() if md_file.exists() else ""
     _copy_text_to_clipboard(md)
 
     print(f"saved  : {minder_file}")
