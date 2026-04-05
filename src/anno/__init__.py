@@ -125,13 +125,26 @@ def _kill_minder() -> bool:
     return False
 
 
-def cmd_mind(mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
+def _make_minder_file(path: Path, title: str) -> None:
+    path.write_text(
+        f'<minder version="1.0"><theme name="Default" style=""/>'
+        f"<layouts><layout name=\"Default\"/></layouts>"
+        f'<nodes><node id="0" posx="0" posy="0" side="right" fold="false" task="-1" hide_note="true" image-pos="8">'
+        f"<nodename>{title}</nodename></node></nodes></minder>"
+    )
+
+
+def cmd_mind(note: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     out_dir = Path(mind_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    minder_file = out_dir / f"mm_{ts}.minder"
-    md_file = out_dir / f"mm_{ts}.md"
+    stem = note.replace(" ", "_") if note else f"mm_{ts}"
+    minder_file = out_dir / f"{stem}.minder"
+    md_file = out_dir / f"{stem}.md"
+
+    title = note if note else "New Map"
+    _make_minder_file(minder_file, title)
 
     _kill_minder()
     subprocess.run([MINDER, str(minder_file)], check=True)
@@ -241,6 +254,9 @@ mind_cmd = command(
     name="mind",
     help="Open a new mind map in Minder, export markdown to clipboard on exit.",
     callback=cmd_mind,
+    arguments=[
+        argument(name="note", arg_type=str, sort_key=0, optional=True),
+    ],
     options=[_mind_dir_option],
 )
 app.commands.append(mind_cmd)
