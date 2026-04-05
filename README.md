@@ -2,6 +2,8 @@
 
 Quick CLI for annotating figures in Inkscape and building mind maps in Minder.
 
+<img src="help.svg" alt="CLI help output">
+
 ```
 anno
 ├── ink
