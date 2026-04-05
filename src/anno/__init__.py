@@ -172,7 +172,7 @@ def _make_minder_file(path: Path, title: str) -> None:
 
 
 def cmd_mind(note: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
-    out_dir = Path(mind_dir)
+    out_dir = Path(mind_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
