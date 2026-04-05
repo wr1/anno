@@ -290,14 +290,14 @@ _mind_dir_option = option(
 ink_group = group(name="ink", help="Annotate figures with Inkscape.")
 ink_group.commands.append(command(
     name="fig",
-    help="Open a figure (PNG or JPG) in Inkscape, save SVG, copy to clipboard.",
+    help="Open a figure (PNG or JPG) in Inkscape; on close, saves SVG and copies result as PNG to clipboard.",
     callback=cmd_ink_fig,
     arguments=[argument(name="file", arg_type=str, sort_key=0)],
     options=[_notes_option],
 ))
 ink_group.commands.append(command(
     name="screen",
-    help="Annotate the latest screenshot.",
+    help="Open the latest screenshot in Inkscape; on close, saves SVG and copies result as PNG to clipboard.",
     callback=cmd_ink_screen,
     options=[_notes_option, _screenshots_option],
 ))
