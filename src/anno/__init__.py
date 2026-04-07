@@ -357,7 +357,7 @@ ink_group.commands.append(command(
     name="new",
     help="Open a new blank SVG in Inkscape.",
     callback=cmd_ink_new,
-    arguments=[argument(name="name", arg_type=str, nargs="?", default="", sort_key=0)],
+    arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
     options=[_notes_option],
 ))
 ink_group.commands.append(command(
@@ -388,7 +388,7 @@ mind_group.commands.append(command(
     name="new",
     help="Open a new blank mind map in Minder.",
     callback=cmd_mind_new,
-    arguments=[argument(name="name", arg_type=str, nargs="?", default="", sort_key=0)],
+    arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
     options=[_mind_dir_option],
 ))
 mind_group.commands.append(command(
