@@ -97,6 +97,56 @@ def _copy_text_to_clipboard(text: str) -> None:
 
 # --- ink callbacks ---
 
+def _make_blank_svg(path: Path, w: int = 1920, h: int = 1080) -> None:
+    svg = f"""<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     width="{w}" height="{h}" viewBox="0 0 {w} {h}">
+  <sodipodi:namedview inkscape:document-units="px"/>
+  <style>
+    text, tspan {{ font-size: {DEFAULT_FONT_SIZE}px; }}
+  </style>
+</svg>"""
+    path.write_text(svg)
+
+
+def cmd_ink_new(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
+    out_dir = Path(notes_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if name:
+        stem = name[:-4] if name.endswith(".svg") else name
+        svg = out_dir / f"{stem}.svg"
+        if svg.exists():
+            sys.exit(f"Already exists: {svg}")
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        svg = out_dir / f"fig_{ts}.svg"
+    _make_blank_svg(svg)
+    print(f"opening {svg}")
+    subprocess.run(["inkscape", str(svg)], check=True)
+    out_png = _export_png(svg)
+    _copy_to_clipboard(out_png)
+    out_png.unlink(missing_ok=True)
+    print(f"saved  : {svg}")
+    print("copied : PNG to clipboard")
+
+
+def cmd_ink_open(name: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
+    out_dir = Path(notes_dir)
+    stem = name[:-4] if name.endswith(".svg") else name
+    svg = out_dir / f"{stem}.svg"
+    if not svg.exists():
+        sys.exit(f"Not found: {svg}")
+    print(f"opening {svg}")
+    subprocess.run(["inkscape", str(svg)], check=True)
+    out_png = _export_png(svg)
+    _copy_to_clipboard(out_png)
+    out_png.unlink(missing_ok=True)
+    print(f"saved  : {svg}")
+    print("copied : PNG to clipboard")
+
+
 def cmd_ink_fig(file: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
     img_path = Path(file).resolve()
     if not img_path.exists():
@@ -205,19 +255,27 @@ def _run_minder(minder_file: Path, md_file: Path) -> None:
 
 # --- mind callbacks ---
 
-def cmd_mind_new(mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
+def cmd_mind_new(name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     out_dir = Path(mind_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    minder_file = out_dir / f"mm_{ts}.minder"
-    md_file = out_dir / f"mm_{ts}.md"
+    if name:
+        stem = name[:-7] if name.endswith(".minder") else name
+        minder_file = out_dir / f"{stem}.minder"
+        if minder_file.exists():
+            sys.exit(f"Already exists: {minder_file}")
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        stem = f"mm_{ts}"
+        minder_file = out_dir / f"{stem}.minder"
+    md_file = minder_file.with_suffix(".md")
     _make_minder_file(minder_file)
     _run_minder(minder_file, md_file)
 
 
 def cmd_mind_open(name: str, mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     out_dir = Path(mind_dir).resolve()
-    minder_file = out_dir / f"{name}.minder"
+    stem = name[:-7] if name.endswith(".minder") else name
+    minder_file = out_dir / f"{stem}.minder"
     if not minder_file.exists():
         sys.exit(f"Not found: {minder_file}")
     md_file = minder_file.with_suffix(".md")
@@ -296,6 +354,20 @@ _mind_dir_option = option(
 # ink group
 ink_group = group(name="ink", help="Annotate figures with Inkscape. On close: saves SVG, copies result as PNG to clipboard.")
 ink_group.commands.append(command(
+    name="new",
+    help="Open a new blank SVG in Inkscape.",
+    callback=cmd_ink_new,
+    arguments=[argument(name="name", arg_type=str, default="", required=False, sort_key=0)],
+    options=[_notes_option],
+))
+ink_group.commands.append(command(
+    name="open",
+    help="Open an existing SVG annotation in Inkscape.",
+    callback=cmd_ink_open,
+    arguments=[argument(name="name", arg_type=str, sort_key=0)],
+    options=[_notes_option],
+))
+ink_group.commands.append(command(
     name="fig",
     help="Open a figure (PNG or JPG) in Inkscape.",
     callback=cmd_ink_fig,
@@ -316,6 +388,7 @@ mind_group.commands.append(command(
     name="new",
     help="Open a new blank mind map in Minder.",
     callback=cmd_mind_new,
+    arguments=[argument(name="name", arg_type=str, default="", required=False, sort_key=0)],
     options=[_mind_dir_option],
 ))
 mind_group.commands.append(command(
