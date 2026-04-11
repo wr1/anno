@@ -3,7 +3,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +20,7 @@ DEFAULT_FONT_SIZE = 30
 
 
 # --- image helpers ---
+
 
 def _image_dimensions(path: Path) -> tuple[int, int]:
     data = path.read_bytes()
@@ -61,25 +61,51 @@ def _embed_image_into_svg(img_path: Path, svg_path: Path) -> None:
 
 
 def _export_png(svg_path: Path) -> Path:
-    tmp = Path(tempfile.mktemp(suffix=".png"))
+    out = svg_path.with_suffix(".png")
     subprocess.run(
-        ["inkscape", "--export-type=png", f"--export-dpi={EXPORT_DPI}", f"--export-filename={tmp}", str(svg_path)],
+        [
+            "inkscape",
+            "--export-type=png",
+            f"--export-dpi={EXPORT_DPI}",
+            f"--export-filename={out}",
+            str(svg_path),
+        ],
         check=True,
-        capture_output=True,
+        stderr=subprocess.DEVNULL,
     )
-    return tmp
+    return out
+
+
+def _run_inkscape_and_export(svg: Path) -> None:
+    subprocess.run(["inkscape", str(svg)], check=True, stderr=subprocess.DEVNULL)
+    out_png = _export_png(svg)
+    _copy_to_clipboard(out_png)
+    print(f"saved  : {svg}")
+    print(f"saved  : {out_png}")
+    print("copied : PNG to clipboard")
 
 
 def _copy_to_clipboard(png_path: Path) -> None:
     if shutil.which("xclip"):
         subprocess.run(
-            ["xclip", "-selection", "clipboard", "-t", "image/png", "-i", str(png_path)],
+            [
+                "xclip",
+                "-selection",
+                "clipboard",
+                "-t",
+                "image/png",
+                "-i",
+                str(png_path),
+            ],
             check=True,
         )
     elif sys.platform == "darwin":
         subprocess.run(
-            ["osascript", "-e",
-             f'set the clipboard to (read (POSIX file "{png_path}") as \xab class PNGf\xbb)'],
+            [
+                "osascript",
+                "-e",
+                f'set the clipboard to (read (POSIX file "{png_path}") as \xab class PNGf\xbb)',
+            ],
             check=True,
         )
     else:
@@ -88,7 +114,9 @@ def _copy_to_clipboard(png_path: Path) -> None:
 
 def _copy_text_to_clipboard(text: str) -> None:
     if shutil.which("xclip"):
-        subprocess.run(["xclip", "-selection", "clipboard"], input=text, text=True, check=True)
+        subprocess.run(
+            ["xclip", "-selection", "clipboard"], input=text, text=True, check=True
+        )
     elif sys.platform == "darwin":
         subprocess.run(["pbcopy"], input=text, text=True, check=True)
     else:
@@ -96,6 +124,7 @@ def _copy_text_to_clipboard(text: str) -> None:
 
 
 # --- ink callbacks ---
+
 
 def _make_blank_svg(path: Path, w: int = 1920, h: int = 1080) -> None:
     svg = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -115,8 +144,7 @@ def cmd_ink_new(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None
     out_dir = Path(notes_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     if name:
-        stem = name[:-4] if name.endswith(".svg") else name
-        svg = out_dir / f"{stem}.svg"
+        svg = out_dir / f"{Path(name).stem}.svg"
         if svg.exists():
             sys.exit(f"Already exists: {svg}")
     else:
@@ -124,27 +152,16 @@ def cmd_ink_new(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None
         svg = out_dir / f"fig_{ts}.svg"
     _make_blank_svg(svg)
     print(f"opening {svg}")
-    subprocess.run(["inkscape", str(svg)], check=True)
-    out_png = _export_png(svg)
-    _copy_to_clipboard(out_png)
-    out_png.unlink(missing_ok=True)
-    print(f"saved  : {svg}")
-    print("copied : PNG to clipboard")
+    _run_inkscape_and_export(svg)
 
 
 def cmd_ink_open(name: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
     out_dir = Path(notes_dir)
-    stem = name[:-4] if name.endswith(".svg") else name
-    svg = out_dir / f"{stem}.svg"
+    svg = out_dir / f"{Path(name).stem}.svg"
     if not svg.exists():
         sys.exit(f"Not found: {svg}")
     print(f"opening {svg}")
-    subprocess.run(["inkscape", str(svg)], check=True)
-    out_png = _export_png(svg)
-    _copy_to_clipboard(out_png)
-    out_png.unlink(missing_ok=True)
-    print(f"saved  : {svg}")
-    print("copied : PNG to clipboard")
+    _run_inkscape_and_export(svg)
 
 
 def cmd_ink_fig(file: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
@@ -156,22 +173,18 @@ def cmd_ink_fig(file: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    svg = out_dir / f"{img_path.stem}_{ts}.svg"
+    stem = img_path.stem.lower().replace(" ", "_")
+    svg = out_dir / f"{stem}_{ts}.svg"
 
     _embed_image_into_svg(img_path, svg)
     print(f"opening {svg}")
-
-    subprocess.run(["inkscape", str(svg)], check=True)
-
-    out_png = _export_png(svg)
-    _copy_to_clipboard(out_png)
-    out_png.unlink(missing_ok=True)
-
-    print(f"saved  : {svg}")
-    print("copied : PNG to clipboard")
+    _run_inkscape_and_export(svg)
 
 
-def cmd_ink_screen(notes_dir: str = str(DEFAULT_NOTES_DIR), screenshots_dir: str = str(DEFAULT_SCREENSHOTS_DIR)) -> None:
+def cmd_ink_screen(
+    notes_dir: str = str(DEFAULT_NOTES_DIR),
+    screenshots_dir: str = str(DEFAULT_SCREENSHOTS_DIR),
+) -> None:
     scr_dir = Path(screenshots_dir)
     pngs = sorted(scr_dir.glob("*.png"), key=lambda p: p.stat().st_mtime)
     if not pngs:
@@ -198,7 +211,9 @@ _STYLES = (
     ' nodemarkup="true" connectiondash="dotted" connectionlwidth="2" connectionarrow="fromto"'
     ' connectionpadding="3" connectionfont="Sans 10" connectiontwidth="100" calloutfont="Sans 12"'
     ' calloutpadding="5" calloutptrwidth="20" calloutptrlength="20"/>'
-    + "".join(f'<style level="{i}" isset="false"{_STYLE_COMMON}/>' for i in range(1, 11))
+    + "".join(
+        f'<style level="{i}" isset="false"{_STYLE_COMMON}/>' for i in range(1, 11)
+    )
 )
 
 
@@ -207,24 +222,14 @@ def _make_minder_file(path: Path) -> None:
         '<?xml version="1.0"?>\n'
         '<minder version="1.16.2" parent-etag="0" etag="0">\n'
         '  <theme name="dark" label="Dark" index="1"/>\n'
-        f'  <styles>{_STYLES}</styles>\n'
-        '  <images/>\n'
-        '  <nodes>\n'
-        '    <node id="0" posx="0" posy="0" width="54" height="49" side="right" fold="false"'
-        ' treesize="49" summarized="false" layout="Horizontal" group="false">\n'
-        '      <style branchmargin="100" branchradius="25" linktype="curved" linkwidth="4"'
-        ' linkarrow="false" linkdash="solid" nodeborder="underlined" nodewidth="200"'
-        ' nodeborderwidth="4" nodefill="false" nodemargin="8" nodepadding="6"'
-        ' nodefont="Sans 11" nodemarkup="true"/>\n'
-        '      <nodename maxwidth="200"><text data=""/></nodename>\n'
-        '      <nodenote></nodenote>\n'
-        '    </node>\n'
-        '  </nodes>\n'
-        '  <groups/>\n'
-        '  <stickers/>\n'
+        f"  <styles>{_STYLES}</styles>\n"
+        "  <images/>\n"
+        "  <nodes/>\n"
+        "  <selected-nodes/>\n"
+        "  <groups/>\n"
+        "  <stickers/>\n"
         '  <nodelinks id="0"/>\n'
-        '  <selected-nodes><node id="0"/></selected-nodes>\n'
-        '</minder>\n'
+        "</minder>\n"
     )
 
 
@@ -255,12 +260,12 @@ def _run_minder(minder_file: Path, md_file: Path) -> None:
 
 # --- mind callbacks ---
 
+
 def cmd_mind_new(name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     out_dir = Path(mind_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     if name:
-        stem = name[:-7] if name.endswith(".minder") else name
-        minder_file = out_dir / f"{stem}.minder"
+        minder_file = out_dir / f"{Path(name).stem}.minder"
         if minder_file.exists():
             sys.exit(f"Already exists: {minder_file}")
     else:
@@ -274,8 +279,7 @@ def cmd_mind_new(name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
 
 def cmd_mind_open(name: str, mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
     out_dir = Path(mind_dir).resolve()
-    stem = name[:-7] if name.endswith(".minder") else name
-    minder_file = out_dir / f"{stem}.minder"
+    minder_file = out_dir / f"{Path(name).stem}.minder"
     if not minder_file.exists():
         sys.exit(f"Not found: {minder_file}")
     md_file = minder_file.with_suffix(".md")
@@ -284,12 +288,29 @@ def cmd_mind_open(name: str, mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
 
 # --- list callback ---
 
-def cmd_list(notes_dir: str = str(DEFAULT_NOTES_DIR), mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
+
+def cmd_list(
+    notes_dir: str = str(DEFAULT_NOTES_DIR), mind_dir: str = str(DEFAULT_MIND_DIR)
+) -> None:
     from rich.console import Console
     from rich.table import Table
 
-    svgs = sorted(Path(notes_dir).glob("*.svg"), key=lambda p: p.stat().st_mtime, reverse=True) if Path(notes_dir).exists() else []
-    minders = sorted(Path(mind_dir).glob("*.minder"), key=lambda p: p.stat().st_mtime, reverse=True) if Path(mind_dir).exists() else []
+    svgs = (
+        sorted(
+            Path(notes_dir).glob("*.svg"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
+        if Path(notes_dir).exists()
+        else []
+    )
+    minders = (
+        sorted(
+            Path(mind_dir).glob("*.minder"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if Path(mind_dir).exists()
+        else []
+    )
 
     if not svgs and not minders:
         print("No annotations found.")
@@ -305,8 +326,9 @@ def cmd_list(notes_dir: str = str(DEFAULT_NOTES_DIR), mind_dir: str = str(DEFAUL
         t.add_column("name", style="rgb(165,214,255)")
         t.add_column("size", style="rgb(139,148,158)")
         for f in files:
-            mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-            size_kb = f.stat().st_size // 1024
+            st = f.stat()
+            mtime = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
+            size_kb = st.st_size // 1024
             t.add_row(mtime, f.name, f"{size_kb} KB")
         console.print(t)
 
@@ -352,61 +374,85 @@ _mind_dir_option = option(
 )
 
 # ink group
-ink_group = group(name="ink", help="Annotate figures with Inkscape. On close: saves SVG, copies result as PNG to clipboard.")
-ink_group.commands.append(command(
-    name="new",
-    help="Open a new blank SVG in Inkscape.",
-    callback=cmd_ink_new,
-    arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
-    options=[_notes_option],
-))
-ink_group.commands.append(command(
-    name="open",
-    help="Open an existing SVG annotation in Inkscape.",
-    callback=cmd_ink_open,
-    arguments=[argument(name="name", arg_type=str, sort_key=0)],
-    options=[_notes_option],
-))
-ink_group.commands.append(command(
-    name="fig",
-    help="Open a figure (PNG or JPG) in Inkscape.",
-    callback=cmd_ink_fig,
-    arguments=[argument(name="file", arg_type=str, sort_key=0)],
-    options=[_notes_option],
-))
-ink_group.commands.append(command(
-    name="screen",
-    help="Open the latest screenshot in Inkscape.",
-    callback=cmd_ink_screen,
-    options=[_notes_option, _screenshots_option],
-))
+ink_group = group(
+    name="ink",
+    help="Annotate figures with Inkscape. On close: saves SVG, copies result as PNG to clipboard.",
+)
+ink_group.commands.append(
+    command(
+        name="new",
+        help="Open a new blank SVG in Inkscape.",
+        callback=cmd_ink_new,
+        arguments=[
+            argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)
+        ],
+        options=[_notes_option],
+    )
+)
+ink_group.commands.append(
+    command(
+        name="open",
+        help="Open an existing SVG annotation in Inkscape.",
+        callback=cmd_ink_open,
+        arguments=[argument(name="name", arg_type=str, sort_key=0)],
+        options=[_notes_option],
+    )
+)
+ink_group.commands.append(
+    command(
+        name="fig",
+        help="Open a figure (PNG or JPG) in Inkscape.",
+        callback=cmd_ink_fig,
+        arguments=[argument(name="file", arg_type=str, sort_key=0)],
+        options=[_notes_option],
+    )
+)
+ink_group.commands.append(
+    command(
+        name="screen",
+        help="Open the latest screenshot in Inkscape.",
+        callback=cmd_ink_screen,
+        options=[_notes_option, _screenshots_option],
+    )
+)
 app.subgroups.append(ink_group)
 
 # mind group
-mind_group = group(name="mind", help="Mind maps with Minder. On close: exports markdown, copies to clipboard.")
-mind_group.commands.append(command(
-    name="new",
-    help="Open a new blank mind map in Minder.",
-    callback=cmd_mind_new,
-    arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
-    options=[_mind_dir_option],
-))
-mind_group.commands.append(command(
-    name="open",
-    help="Open an existing mind map by name.",
-    callback=cmd_mind_open,
-    arguments=[argument(name="name", arg_type=str, sort_key=0)],
-    options=[_mind_dir_option],
-))
+mind_group = group(
+    name="mind",
+    help="Mind maps with Minder. On close: exports markdown, copies to clipboard.",
+)
+mind_group.commands.append(
+    command(
+        name="new",
+        help="Open a new blank mind map in Minder.",
+        callback=cmd_mind_new,
+        arguments=[
+            argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)
+        ],
+        options=[_mind_dir_option],
+    )
+)
+mind_group.commands.append(
+    command(
+        name="open",
+        help="Open an existing mind map by name.",
+        callback=cmd_mind_open,
+        arguments=[argument(name="name", arg_type=str, sort_key=0)],
+        options=[_mind_dir_option],
+    )
+)
 app.subgroups.append(mind_group)
 
 # list
-app.commands.append(command(
-    name="list",
-    help="List saved annotations and mind maps.",
-    callback=cmd_list,
-    options=[_notes_option, _mind_dir_option],
-))
+app.commands.append(
+    command(
+        name="list",
+        help="List saved annotations and mind maps.",
+        callback=cmd_list,
+        options=[_notes_option, _mind_dir_option],
+    )
+)
 
 
 def main() -> None:

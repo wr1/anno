@@ -14,6 +14,26 @@ Quick CLI for annotating figures in Inkscape and building mind maps in Minder.
 uv tool install .
 ```
 
+## Workflow
+
+**Annotate a figure:**
+```sh
+anno ink fig diagram.png   # or: anno ink screen, anno ink new
+# annotate in Inkscape
+# close Inkscape
+# paste (PNG is already in clipboard)
+```
+
+**Build a mind map:**
+```sh
+anno mind new topic        # or: anno mind open topic
+# edit in Minder
+# close Minder
+# paste (markdown is already in clipboard)
+```
+
+On close, anno exports in the background and loads the result into the clipboard — just switch to your target app and paste.
+
 ## Usage
 
 ```sh
