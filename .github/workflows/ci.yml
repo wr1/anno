@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  check:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,12 +19,29 @@ jobs:
       - name: Install
         run: uv sync
 
-      - name: Lint
+      - name: Ruff lint
         run: uv run ruff check src/
+
+      - name: Ruff format
+        run: uv run ruff format --check src/
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync
 
       - name: Smoke test
         run: |
           uv run anno --help
           uv run anno ink --help
           uv run anno mind --help
+          uv run anno para --help
           uv run anno list

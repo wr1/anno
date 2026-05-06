@@ -1,6 +1,6 @@
 [project]
 name = "anno"
-version = "0.1.0"
+version = "0.1.1"
 requires-python = ">=3.11"
 dependencies = [
     "treeparse",
@@ -16,5 +16,16 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "ruff>=0.15.9",
+    "pre-commit>=3.7",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# treeparse only recognises typing.Optional, not PEP 604 X | None,
+# so keep Optional[...] in CLI callback signatures.
+ignore = ["UP007", "UP045"]
 
