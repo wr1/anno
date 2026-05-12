@@ -576,9 +576,19 @@ def _tree_to_folder(
             child_dir.mkdir(parents=True, exist_ok=True)
             used_dirs.add(child_dir.resolve())
             if depth + 1 < fs_depth:
+                # Intermediate level: preserve the node's own note (if any) as
+                # index.md so it survives a round-trip; children continue as
+                # subfolders below. Without this, notes on non-leaf nodes get
+                # silently dropped when Minder saves.
+                if child.note:
+                    idx_path = child_dir / "index.md"
+                    idx_path.write_text(_tree_to_headings_markdown(
+                        _MindNode(title=child.title, note=child.note), base_level=1
+                    ))
+                    written_index.add(idx_path.resolve())
                 _walk(child, child_dir, depth + 1)
             else:
-                # leaf-folder level: write descendants to index.md
+                # leaf-folder level: collapse descendants into index.md
                 if child.children or child.note:
                     leaf_root = _MindNode(
                         title=child.title, note=child.note, children=child.children
