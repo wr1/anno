@@ -282,14 +282,13 @@ def _run_minder(minder_file: Path, md_file: Path) -> None:
     print("copied : markdown to clipboard")
 
 
-# Headless export keeps the dbus-run-session wrapper — it works fine there
-# and side-steps singleton issues if Minder happens to be open in another
-# window. The GUI launch deliberately does NOT use it: under at least some
-# desktop sessions, the fresh dbus session can't reach
-# org.freedesktop.secrets and xdg-desktop-portal hangs Minder's init.
+# Both calls run Minder directly — wrapping in `dbus-run-session` was
+# originally a multi-instance guard, but it pays a 5-10s portal-init cost
+# in sessions where xdg-desktop-portal can't reach org.freedesktop.secrets,
+# which dominates the wall-clock time of a smart-sync cycle.
 def _minder_export_markdown(minder_file: Path, md_file: Path) -> None:
     subprocess.run(
-        ["dbus-run-session", "--", MINDER, str(minder_file), "--export=markdown", str(md_file)],
+        [MINDER, str(minder_file), "--export=markdown", str(md_file)],
         capture_output=True,
     )
 
@@ -684,6 +683,7 @@ def _run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool) -> None:
             tmp_minder.write_text(_tree_to_minder_xml(seed))
             print(f"import : empty plan, seeded root '{plan_md.stem}'")
         _minder_launch_gui(tmp_minder)
+        print("export : reading tree back from Minder…", flush=True)
         _log("mind_export", tmp_minder)
         exported_md = tmp_minder.with_suffix(".md")
         _minder_export_markdown(tmp_minder, exported_md)
@@ -705,6 +705,7 @@ def _run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard:
         tmp_minder.write_text(_tree_to_minder_xml(tree_in))
         print(f"import : {len(_flatten(tree_in)) - 1} nodes from {root_dir}")
         _minder_launch_gui(tmp_minder)
+        print("export : reading tree back from Minder…", flush=True)
         _log("mind_export", tmp_minder)
         exported_md = tmp_minder.with_suffix(".md")
         _minder_export_markdown(tmp_minder, exported_md)
