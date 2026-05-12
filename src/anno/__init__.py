@@ -271,14 +271,8 @@ def _make_minder_file(path: Path) -> None:
     )
 
 
-# Wrap each Minder launch in its own dbus-run-session so GApplication's
-# singleton lock can't route this invocation to an already-running window;
-# this lets multiple `anno mind …` sessions coexist.
 def _run_minder(minder_file: Path, md_file: Path) -> None:
-    subprocess.run(
-        ["dbus-run-session", "--", MINDER, str(minder_file)],
-        check=True,
-    )
+    _minder_launch_gui(minder_file)
     _log("mind_export", minder_file)
     _minder_export_markdown(minder_file, md_file)
     md = md_file.read_text() if md_file.exists() else ""
@@ -288,6 +282,11 @@ def _run_minder(minder_file: Path, md_file: Path) -> None:
     print("copied : markdown to clipboard")
 
 
+# Headless export keeps the dbus-run-session wrapper — it works fine there
+# and side-steps singleton issues if Minder happens to be open in another
+# window. The GUI launch deliberately does NOT use it: under at least some
+# desktop sessions, the fresh dbus session can't reach
+# org.freedesktop.secrets and xdg-desktop-portal hangs Minder's init.
 def _minder_export_markdown(minder_file: Path, md_file: Path) -> None:
     subprocess.run(
         ["dbus-run-session", "--", MINDER, str(minder_file), "--export=markdown", str(md_file)],
@@ -296,10 +295,7 @@ def _minder_export_markdown(minder_file: Path, md_file: Path) -> None:
 
 
 def _minder_launch_gui(minder_file: Path) -> None:
-    subprocess.run(
-        ["dbus-run-session", "--", MINDER, str(minder_file)],
-        check=True,
-    )
+    subprocess.run([MINDER, str(minder_file)], check=True)
 
 
 # --- markdown ↔ mind-map tree ---
