@@ -636,28 +636,31 @@ def _resolve_open_target(
     """Return (mode, path). Mode is "legacy", "plan", or "folder".
 
     Resolution order:
-      1. *.minder suffix         → legacy at <mind_dir>/<name>
-      2. notes_root/<name>/      → folder smart sync
-      3. plans_dir/<name>.md     → plan smart sync
-      4. mind_dir/<name>.minder  → legacy back-compat
+      1. *.minder suffix     → legacy at <mind_dir>/<name>
+      2. plans_dir/<name>.md → plan smart sync
+      3. otherwise           → folder smart sync at notes_root/<name>/
+         (the directory is created on demand if it doesn't exist).
+
+    Notes:
+      - A pre-existing `<mind_dir>/<name>.minder` is intentionally ignored
+        here — to open one, pass the name with the `.minder` suffix
+        (e.g. `anno mind open foo.minder`). This keeps the bare-name path
+        unambiguous and reserves it for the markdown-source-of-truth flow.
     """
     if name.endswith(".minder"):
         return ("legacy", mind_dir / name)
-    folder = notes_root / name
-    if folder.is_dir():
-        return ("folder", folder.resolve())
     plan_md = plans_dir / f"{name}.md"
     if plan_md.is_file():
         return ("plan", plan_md.resolve())
-    legacy = mind_dir / f"{Path(name).stem}.minder"
-    if legacy.is_file():
-        return ("legacy", legacy.resolve())
-    sys.exit(
-        f"Not found: {name!r}. Checked:\n"
-        f"  folder : {folder}\n"
-        f"  plan   : {plan_md}\n"
-        f"  legacy : {legacy}"
-    )
+    folder = notes_root / name
+    legacy = mind_dir / f"{name}.minder"
+    if not folder.exists() and legacy.is_file():
+        print(
+            f"note   : a legacy {legacy} exists. To open it directly, run\n"
+            f"         `anno mind open {name}.minder`. Continuing with folder\n"
+            f"         sync at {folder}/ — created fresh."
+        )
+    return ("folder", folder.resolve())
 
 
 def _run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool) -> None:
