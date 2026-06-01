@@ -318,8 +318,7 @@ def _reap_existing_minder(reason: str) -> None:
         return
     pid_list = ", ".join(str(p) for p in pids)
     print(
-        f"cleanup: terminating {len(pids)} existing Minder process(es) "
-        f"[{pid_list}] before {reason}",
+        f"cleanup: terminating {len(pids)} existing Minder process(es) [{pid_list}] before {reason}",
         flush=True,
     )
     for pid in pids:
@@ -718,9 +717,7 @@ def _folder_to_tree(root_dir: Path, fs_depth: int) -> tuple[_MindNode, set[Path]
         idx = dir_path / "index.md"
         if idx.exists():
             _ingest(idx, parent)
-        for sub in sorted(
-            p for p in dir_path.iterdir() if p.is_dir() and not _is_skippable_dir(p)
-        ):
+        for sub in sorted(p for p in dir_path.iterdir() if p.is_dir() and not _is_skippable_dir(p)):
             node = _MindNode(title=sub.name)
             parent.children.append(node)
             _walk(sub, node, depth + 1)
@@ -766,17 +763,15 @@ def _tree_to_folder(
                 # silently dropped when Minder saves.
                 if child.note:
                     idx_path = child_dir / "index.md"
-                    idx_path.write_text(_tree_to_headings_markdown(
-                        _MindNode(title=child.title, note=child.note), base_level=1
-                    ))
+                    idx_path.write_text(
+                        _tree_to_headings_markdown(_MindNode(title=child.title, note=child.note), base_level=1)
+                    )
                     written_index.add(idx_path.resolve())
                 _walk(child, child_dir, depth + 1)
             else:
                 # leaf-folder level: collapse descendants into index.md
                 if child.children or child.note:
-                    leaf_root = _MindNode(
-                        title=child.title, note=child.note, children=child.children
-                    )
+                    leaf_root = _MindNode(title=child.title, note=child.note, children=child.children)
                     idx_path = child_dir / "index.md"
                     idx_path.write_text(_tree_to_headings_markdown(leaf_root, base_level=1))
                     written_index.add(idx_path.resolve())
@@ -785,9 +780,7 @@ def _tree_to_folder(
     # write it as <root_dir>/index.md so it survives a round-trip.
     if root.note:
         idx_path = root_dir / "index.md"
-        idx_path.write_text(_tree_to_headings_markdown(
-            _MindNode(title=root.title, note=root.note), base_level=1
-        ))
+        idx_path.write_text(_tree_to_headings_markdown(_MindNode(title=root.title, note=root.note), base_level=1))
         written_index.add(idx_path.resolve())
 
     _walk(root, root_dir, 0)
@@ -866,9 +859,7 @@ def _resolve_open_target(
     return ("new", (mind_dir / f"{name}.minder").resolve())
 
 
-def _run_minder_smart_sync_plan(
-    plan_md: Path, copy_clipboard: bool, force: bool = False
-) -> None:
+def _run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool, force: bool = False) -> None:
     print(f"mode   : plan sync ({plan_md})")
     with tempfile.TemporaryDirectory(prefix="anno-plan-") as td:
         tmp_minder = Path(td) / f"{plan_md.stem}.minder"
@@ -889,9 +880,7 @@ def _run_minder_smart_sync_plan(
         except RuntimeError as exc:
             recovery = _save_recovery_minder(tmp_minder, plan_md.stem)
             sys.exit(
-                f"error  : {exc}\n"
-                f"recovery: working .minder copied to {recovery}\n"
-                f"          {plan_md} is unchanged."
+                f"error  : {exc}\nrecovery: working .minder copied to {recovery}\n          {plan_md} is unchanged."
             )
         print("export : reading tree back from Minder…", flush=True)
         _log("mind_export", tmp_minder)
@@ -901,9 +890,7 @@ def _run_minder_smart_sync_plan(
         except RuntimeError as exc:
             recovery = _save_recovery_minder(tmp_minder, plan_md.stem)
             sys.exit(
-                f"error  : {exc}\n"
-                f"recovery: working .minder copied to {recovery}\n"
-                f"          {plan_md} is unchanged."
+                f"error  : {exc}\nrecovery: working .minder copied to {recovery}\n          {plan_md} is unchanged."
             )
         out_tree = _parse_bullets_markdown(exported_md.read_text())
         if in_count > 0 and len(_flatten(out_tree)) - 1 == 0:
@@ -941,8 +928,7 @@ def _push_minder_to_folder(
     out_count = len(_flatten(out_tree)) - 1
     if out_count == 0 and in_count > 0:
         raise RuntimeError(
-            f"Minder returned an empty tree but {root_dir} contained "
-            f"{in_count} node(s) — aborting to avoid data loss."
+            f"Minder returned an empty tree but {root_dir} contained {in_count} node(s) — aborting to avoid data loss."
         )
     # `ingested` are the index.md paths we read on entry. Deleting them
     # before writing lets us migrate content to the canonical leaf-depth
@@ -951,9 +937,7 @@ def _push_minder_to_folder(
     return out_tree
 
 
-def _run_minder_smart_sync_folder(
-    root_dir: Path, fs_depth: int, copy_clipboard: bool, force: bool = False
-) -> None:
+def _run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard: bool, force: bool = False) -> None:
     print(f"mode   : folder sync ({root_dir}, fs-depth={fs_depth})")
     tree_in, _ingested = _folder_to_tree(root_dir, fs_depth)
     with tempfile.TemporaryDirectory(prefix="anno-folder-") as td:
@@ -998,9 +982,7 @@ def _flatten(node: _MindNode) -> list[_MindNode]:
 # --- mind callbacks ---
 
 
-def cmd_mind_new(
-    name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR), force: bool = False
-) -> None:
+def cmd_mind_new(name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR), force: bool = False) -> None:
     _refuse_if_minder_running(force)
     out_dir = Path(mind_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1488,8 +1470,7 @@ mind_group.commands.append(
     command(
         name="import",
         help=(
-            "Push a saved .minder file into a folder-sync .md tree (no GUI). "
-            "Default target is notes/<minder-stem>/."
+            "Push a saved .minder file into a folder-sync .md tree (no GUI). Default target is notes/<minder-stem>/."
         ),
         callback=cmd_mind_import,
         arguments=[
