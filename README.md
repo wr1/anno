@@ -93,6 +93,7 @@ anno ink fig [file]       # embed PNG/JPG into SVG, open in Inkscape
 anno ink screen           # use latest screenshot as figure
 anno mind new [name]      # blank mind map in Minder
 anno mind open <name>     # reopen existing mind map
+anno mind import <minder> # apply a saved .minder to its folder tree (no GUI)
 anno cam                  # webcam capture → enhanced PNG to clipboard
 anno para new <file>      # open mesh in ParaView
 anno para open [name]     # reopen last (or named) mesh from log

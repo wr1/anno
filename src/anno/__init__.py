@@ -3,10 +3,12 @@ import json
 import os
 import re
 import shutil
+import signal
 import struct
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -271,8 +273,104 @@ def _make_minder_file(path: Path) -> None:
     )
 
 
-def _run_minder(minder_file: Path, md_file: Path) -> None:
-    _minder_launch_gui(minder_file)
+def _existing_minder_pids() -> list[int]:
+    """PIDs of any com.github.phase1geo.minder processes owned by the current
+    user. Walks /proc directly so we don't depend on pgrep/pidof being
+    installed; on systems without /proc this returns []."""
+    pids: list[int] = []
+    proc_root = Path("/proc")
+    if not proc_root.is_dir():
+        return pids
+    my_uid = os.getuid()
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if entry.stat().st_uid != my_uid:
+                continue
+            cmdline = (entry / "cmdline").read_bytes()
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        if not cmdline:
+            continue
+        argv0 = cmdline.split(b"\x00", 1)[0].decode(errors="replace")
+        if Path(argv0).name == MINDER:
+            pids.append(int(entry.name))
+    return pids
+
+
+def _reap_existing_minder(reason: str) -> None:
+    """SIGTERM (then SIGKILL) any leftover Minder processes before launching a
+    new one.
+
+    Minder's GApplication keeps its primary instance alive after the last
+    window closes in some GTK4/Wayland sessions, so the next invocation we
+    spawn forwards into that zombie and exits immediately — surfacing here
+    as anno's `subprocess.run` blocking on a windowless process or as the
+    `_MINDER_GUI_MIN_ELAPSED` guard firing. Reaping pre-flight gives us a
+    clean primary instance every time.
+
+    Trade-off: a Minder opened from another shell will also be killed, but
+    parallel GUI sessions don't actually work with the singleton routing
+    anyway — this just makes the constraint explicit."""
+    pids = _existing_minder_pids()
+    if not pids:
+        return
+    pid_list = ", ".join(str(p) for p in pids)
+    print(
+        f"cleanup: terminating {len(pids)} existing Minder process(es) "
+        f"[{pid_list}] before {reason}",
+        flush=True,
+    )
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        if not any(Path(f"/proc/{p}").exists() for p in pids):
+            return
+        time.sleep(0.1)
+    for pid in pids:
+        if Path(f"/proc/{pid}").exists():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+
+def _refuse_if_minder_running(force: bool) -> None:
+    """Graceful refusal: if a Minder instance is already running and the user
+    didn't pass --force, exit cleanly without touching it.
+
+    anno needs exclusive control of Minder to export-on-close (the launched
+    process must be the GApplication primary instance it can wait on), so it
+    won't open over a running window. --force reaps the existing instance
+    instead — see `_reap_existing_minder`."""
+    if force:
+        return
+    pids = _existing_minder_pids()
+    if not pids:
+        return
+    pid_list = ", ".join(str(p) for p in pids)
+    sys.exit(
+        f"error  : Minder is already running (PID {pid_list}).\n"
+        f"note   : anno exports your map when the window closes, which needs\n"
+        f"         exclusive control of Minder — so it won't open over a running\n"
+        f"         instance. Close that window and rerun, or pass --force to replace it."
+    )
+
+
+def _run_minder(minder_file: Path, md_file: Path, force: bool = False) -> None:
+    try:
+        _minder_launch_gui(minder_file, force)
+    except RuntimeError as exc:
+        sys.exit(
+            f"error  : {exc}\n"
+            f"note   : {minder_file} is at its final location, so nothing is lost — "
+            f"close the other Minder window and rerun."
+        )
     _log("mind_export", minder_file)
     _minder_export_markdown(minder_file, md_file)
     md = md_file.read_text() if md_file.exists() else ""
@@ -282,19 +380,94 @@ def _run_minder(minder_file: Path, md_file: Path) -> None:
     print("copied : markdown to clipboard")
 
 
-# Both calls run Minder directly — wrapping in `dbus-run-session` was
-# originally a multi-instance guard, but it pays a 5-10s portal-init cost
-# in sessions where xdg-desktop-portal can't reach org.freedesktop.secrets,
-# which dominates the wall-clock time of a smart-sync cycle.
+# Both entry points (`_minder_launch_gui`, `_minder_export_markdown`) reap any
+# existing Minder process up-front so the GApplication singleton can't route
+# this invocation to a stale primary instance. A previous `dbus-run-session`
+# isolation wrapper achieved the same thing but stalled 5-10s on portal/secrets
+# init in sessions without xdg-desktop-portal; reaping is cheaper and fixes
+# the same wedge.
 def _minder_export_markdown(minder_file: Path, md_file: Path) -> None:
-    subprocess.run(
+    _reap_existing_minder("markdown export")
+    # Hard-fail on a missing/empty output file. We ignore the process exit
+    # code because Minder exits rc=1 even on a successful export (Gtk/portal
+    # noise on teardown); the actual signal of success is whether the .md
+    # got written. A silent failure here used to leave smart-sync thinking
+    # the user emptied the tree, which proceeded to wipe the source folder.
+    result = subprocess.run(
         [MINDER, str(minder_file), "--export=markdown", str(md_file)],
         capture_output=True,
     )
+    if not md_file.exists() or not md_file.read_text().strip():
+        stderr = result.stderr.decode(errors="replace").strip()
+        raise RuntimeError(
+            f"Minder export produced no markdown for {minder_file} "
+            f"(rc={result.returncode}); stderr: {stderr[:400] or '<empty>'}"
+        )
 
 
-def _minder_launch_gui(minder_file: Path) -> None:
-    subprocess.run([MINDER, str(minder_file)], check=True)
+# If Minder is already running and the pre-flight reap somehow misses it,
+# GApplication forwards the file-open args to the primary instance and the
+# second process exits immediately. This guard refuses the suspiciously-fast
+# return so callers can preserve the working .minder and tell the user what
+# happened.
+_MINDER_GUI_MIN_ELAPSED = 2.0
+
+
+def _minder_launch_gui(minder_file: Path, force: bool = False) -> None:
+    # Default is graceful refusal, enforced up-front by `_refuse_if_minder_running`
+    # in the command callbacks; here we only reap when the caller opted in with
+    # --force. The fast-exit guard below stays as a backstop for the rare race
+    # where an instance starts between the refusal check and this launch.
+    if force:
+        _reap_existing_minder("GUI launch (--force)")
+    t0 = time.monotonic()
+    # Popen + KeyboardInterrupt handler so the user has an escape hatch: if
+    # Minder keeps the process alive after closing its window (intermittent
+    # bug under GTK4/Wayland), Ctrl-C terminates Minder cleanly and we still
+    # run the markdown export from the saved .minder file.
+    proc = subprocess.Popen([MINDER, str(minder_file)])
+    sigint_count = 0
+    try:
+        while True:
+            try:
+                proc.wait()
+                break
+            except KeyboardInterrupt:
+                sigint_count += 1
+                if sigint_count == 1:
+                    print(
+                        "\ninfo   : Ctrl-C — terminating Minder so anno can "
+                        "finish the export. Press Ctrl-C again to abort.",
+                        flush=True,
+                    )
+                    proc.terminate()
+                    continue
+                proc.kill()
+                raise
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    elapsed = time.monotonic() - t0
+    if sigint_count == 0 and elapsed < _MINDER_GUI_MIN_ELAPSED:
+        raise RuntimeError(
+            f"Minder GUI exited after {elapsed:.2f}s — that's too fast to be a real "
+            f"edit session, so it almost certainly forwarded the open request to an "
+            f"already-running Minder window (GApplication single-instance). The "
+            f"pre-flight reap should have prevented this; check "
+            f"`ps -ef | grep minder` for an unexpected process and rerun."
+        )
+
+
+def _save_recovery_minder(src: Path, stem: str) -> Path:
+    """Copy a working .minder out of its tempdir to a stable location so
+    `anno mind import` can retry the round-trip after a failed sync."""
+    recovery_dir = DEFAULT_NOTES_ROOT / ".anno" / "recovery"
+    recovery_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = recovery_dir / f"{ts}_{stem}.minder"
+    shutil.copy2(src, dest)
+    return dest
 
 
 # --- markdown ↔ mind-map tree ---
@@ -500,11 +673,21 @@ def _tree_to_minder_xml(root: _MindNode) -> str:
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._\- ]+")
 
+_SKIP_DIR_NAMES = {"__pycache__", "node_modules", "venv"}
+
 
 def _safe_dirname(title: str) -> str:
     """Map a node title to a filesystem-safe directory name."""
     name = _SAFE_NAME_RE.sub("-", title).strip(" -.") or "untitled"
     return name
+
+
+def _is_skippable_dir(path: Path) -> bool:
+    # Hidden dirs (.git, .venv, .ruff_cache, .mypy_cache, .pytest_cache,
+    # .ipynb_checkpoints, …) and common build/cache names. Keeps these
+    # out of the mind-map tree so the user only sees content folders.
+    name = path.name
+    return name.startswith(".") or name in _SKIP_DIR_NAMES
 
 
 def _folder_to_tree(root_dir: Path, fs_depth: int) -> tuple[_MindNode, set[Path]]:
@@ -535,7 +718,9 @@ def _folder_to_tree(root_dir: Path, fs_depth: int) -> tuple[_MindNode, set[Path]
         idx = dir_path / "index.md"
         if idx.exists():
             _ingest(idx, parent)
-        for sub in sorted(p for p in dir_path.iterdir() if p.is_dir()):
+        for sub in sorted(
+            p for p in dir_path.iterdir() if p.is_dir() and not _is_skippable_dir(p)
+        ):
             node = _MindNode(title=sub.name)
             parent.children.append(node)
             _walk(sub, node, depth + 1)
@@ -632,25 +817,43 @@ def _prune_empty_dirs(root_dir: Path, keep: set[Path]) -> None:
 # --- smart-sync runners ---
 
 
+def _folder_has_content(folder: Path) -> bool:
+    """True iff `folder` looks like a populated folder-sync tree.
+
+    Cheap top-level peek that mirrors what `_folder_to_tree` would actually
+    pick up: a non-skippable subdir, or an `index.md` at the root."""
+    if not folder.exists():
+        return False
+    for p in folder.iterdir():
+        if p.is_dir() and not _is_skippable_dir(p):
+            return True
+        if p.is_file() and p.name == "index.md":
+            return True
+    return False
+
+
 def _resolve_open_target(
     name: str,
     mind_dir: Path,
     notes_root: Path,
     plans_dir: Path,
 ) -> tuple[str, Path]:
-    """Return (mode, path). Mode is "legacy", "plan", or "folder".
+    """Return (mode, path). Mode is "legacy", "plan", "folder", or "new".
 
     Resolution order:
-      1. *.minder suffix     → legacy at <mind_dir>/<name>
-      2. plans_dir/<name>.md → plan smart sync
-      3. otherwise           → folder smart sync at notes_root/<name>/
-         (the directory is created on demand if it doesn't exist).
+      1. *.minder suffix       → legacy at <mind_dir>/<name>
+      2. plans_dir/<name>.md   → plan smart sync
+      3. populated notes/<name>/ → folder smart sync
+      4. otherwise             → new map at <mind_dir>/<name>.minder
+         (opens an existing one if it's already there; creates fresh if not).
 
-    Notes:
-      - A pre-existing `<mind_dir>/<name>.minder` is intentionally ignored
-        here — to open one, pass the name with the `.minder` suffix
-        (e.g. `anno mind open foo.minder`). This keeps the bare-name path
-        unambiguous and reserves it for the markdown-source-of-truth flow.
+    Rationale for (4): if there's no existing source content, the folder-sync
+    round-trip would write the working .minder into a tempdir, launch Minder,
+    then export back. Anything that interrupts that round-trip — single-instance
+    forwarding, a crash, the user closing without saving — loses the freshly
+    built map because the tempdir is gone. Falling through to a stable
+    <mind_dir>/<name>.minder location preserves the user's work in every case;
+    `anno mind import` can push it into a folder later if desired.
     """
     if name.endswith(".minder"):
         return ("legacy", mind_dir / name)
@@ -658,17 +861,14 @@ def _resolve_open_target(
     if plan_md.is_file():
         return ("plan", plan_md.resolve())
     folder = notes_root / name
-    legacy = mind_dir / f"{name}.minder"
-    if not folder.exists() and legacy.is_file():
-        print(
-            f"note   : a legacy {legacy} exists. To open it directly, run\n"
-            f"         `anno mind open {name}.minder`. Continuing with folder\n"
-            f"         sync at {folder}/ — created fresh."
-        )
-    return ("folder", folder.resolve())
+    if _folder_has_content(folder):
+        return ("folder", folder.resolve())
+    return ("new", (mind_dir / f"{name}.minder").resolve())
 
 
-def _run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool) -> None:
+def _run_minder_smart_sync_plan(
+    plan_md: Path, copy_clipboard: bool, force: bool = False
+) -> None:
     print(f"mode   : plan sync ({plan_md})")
     with tempfile.TemporaryDirectory(prefix="anno-plan-") as td:
         tmp_minder = Path(td) / f"{plan_md.stem}.minder"
@@ -676,19 +876,43 @@ def _run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool) -> None:
         if body.strip():
             tree = _parse_headings_markdown(body)
             tmp_minder.write_text(_tree_to_minder_xml(tree))
-            print(f"import : {len(_flatten(tree)) - 1} nodes from {plan_md.name}")
+            in_count = len(_flatten(tree)) - 1
+            print(f"import : {in_count} nodes from {plan_md.name}")
         else:
             # Fresh plan: seed with the stem as the root title.
             seed = _MindNode(title=plan_md.stem)
             tmp_minder.write_text(_tree_to_minder_xml(seed))
+            in_count = 0
             print(f"import : empty plan, seeded root '{plan_md.stem}'")
-        _minder_launch_gui(tmp_minder)
+        try:
+            _minder_launch_gui(tmp_minder, force)
+        except RuntimeError as exc:
+            recovery = _save_recovery_minder(tmp_minder, plan_md.stem)
+            sys.exit(
+                f"error  : {exc}\n"
+                f"recovery: working .minder copied to {recovery}\n"
+                f"          {plan_md} is unchanged."
+            )
         print("export : reading tree back from Minder…", flush=True)
         _log("mind_export", tmp_minder)
         exported_md = tmp_minder.with_suffix(".md")
-        _minder_export_markdown(tmp_minder, exported_md)
-        exported = exported_md.read_text() if exported_md.exists() else ""
-        out_tree = _parse_bullets_markdown(exported) if exported else _MindNode(title=plan_md.stem)
+        try:
+            _minder_export_markdown(tmp_minder, exported_md)
+        except RuntimeError as exc:
+            recovery = _save_recovery_minder(tmp_minder, plan_md.stem)
+            sys.exit(
+                f"error  : {exc}\n"
+                f"recovery: working .minder copied to {recovery}\n"
+                f"          {plan_md} is unchanged."
+            )
+        out_tree = _parse_bullets_markdown(exported_md.read_text())
+        if in_count > 0 and len(_flatten(out_tree)) - 1 == 0:
+            recovery = _save_recovery_minder(tmp_minder, plan_md.stem)
+            sys.exit(
+                f"error  : Minder returned an empty tree from a {in_count}-node "
+                f"source; refusing to wipe {plan_md}.\n"
+                f"recovery: working .minder copied to {recovery}."
+            )
         plan_md.parent.mkdir(parents=True, exist_ok=True)
         plan_md.write_text(_tree_to_headings_markdown(out_tree))
         print(f"saved  : {plan_md}")
@@ -697,24 +921,67 @@ def _run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool) -> None:
             print("copied : markdown to clipboard")
 
 
-def _run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard: bool) -> None:
+def _push_minder_to_folder(
+    minder_file: Path,
+    root_dir: Path,
+    fs_depth: int,
+) -> _MindNode:
+    """Export `minder_file` and write the resulting tree into `root_dir`.
+
+    Refuses to wipe a non-empty source: if Minder exports an empty tree
+    while `root_dir` already has content, that's overwhelmingly a tooling
+    failure (Minder didn't save, headless export glitched), not the user
+    deliberately deleting every node — so we raise instead of obeying it."""
+    with tempfile.TemporaryDirectory(prefix="anno-export-") as td:
+        md_file = Path(td) / f"{minder_file.stem}.md"
+        _minder_export_markdown(minder_file, md_file)
+        out_tree = _parse_bullets_markdown(md_file.read_text())
+    existing_tree, ingested = _folder_to_tree(root_dir, fs_depth)
+    in_count = len(_flatten(existing_tree)) - 1
+    out_count = len(_flatten(out_tree)) - 1
+    if out_count == 0 and in_count > 0:
+        raise RuntimeError(
+            f"Minder returned an empty tree but {root_dir} contained "
+            f"{in_count} node(s) — aborting to avoid data loss."
+        )
+    # `ingested` are the index.md paths we read on entry. Deleting them
+    # before writing lets us migrate content to the canonical leaf-depth
+    # layout cleanly; the writer will recreate index.md where needed.
+    _tree_to_folder(out_tree, root_dir, fs_depth, delete_first=ingested)
+    return out_tree
+
+
+def _run_minder_smart_sync_folder(
+    root_dir: Path, fs_depth: int, copy_clipboard: bool, force: bool = False
+) -> None:
     print(f"mode   : folder sync ({root_dir}, fs-depth={fs_depth})")
-    tree_in, ingested = _folder_to_tree(root_dir, fs_depth)
+    tree_in, _ingested = _folder_to_tree(root_dir, fs_depth)
     with tempfile.TemporaryDirectory(prefix="anno-folder-") as td:
         tmp_minder = Path(td) / f"{root_dir.name}.minder"
         tmp_minder.write_text(_tree_to_minder_xml(tree_in))
         print(f"import : {len(_flatten(tree_in)) - 1} nodes from {root_dir}")
-        _minder_launch_gui(tmp_minder)
+        try:
+            _minder_launch_gui(tmp_minder, force)
+        except RuntimeError as exc:
+            recovery = _save_recovery_minder(tmp_minder, root_dir.name)
+            sys.exit(
+                f"error  : {exc}\n"
+                f"recovery: working .minder copied to {recovery}\n"
+                f"          {root_dir}/ is unchanged; run `anno mind import "
+                f"{recovery}` after closing the other Minder window."
+            )
         print("export : reading tree back from Minder…", flush=True)
         _log("mind_export", tmp_minder)
-        exported_md = tmp_minder.with_suffix(".md")
-        _minder_export_markdown(tmp_minder, exported_md)
-        exported = exported_md.read_text() if exported_md.exists() else ""
-        out_tree = _parse_bullets_markdown(exported) if exported else _MindNode(title=root_dir.name)
-        # `ingested` are the index.md paths we read on entry. Deleting them
-        # before writing lets us migrate content to the canonical leaf-depth
-        # layout cleanly; the writer will recreate index.md where needed.
-        _tree_to_folder(out_tree, root_dir, fs_depth, delete_first=ingested)
+        try:
+            out_tree = _push_minder_to_folder(tmp_minder, root_dir, fs_depth)
+        except RuntimeError as exc:
+            recovery = _save_recovery_minder(tmp_minder, root_dir.name)
+            sys.exit(
+                f"error  : {exc}\n"
+                f"recovery: working .minder copied to {recovery}\n"
+                f"          run `anno mind import {recovery}` to retry the "
+                f"write into {root_dir}/."
+            )
         print(f"saved  : {root_dir}/ ({len(_flatten(out_tree)) - 1} nodes)")
         if copy_clipboard:
             _copy_text_to_clipboard(_tree_to_headings_markdown(out_tree))
@@ -731,7 +998,10 @@ def _flatten(node: _MindNode) -> list[_MindNode]:
 # --- mind callbacks ---
 
 
-def cmd_mind_new(name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
+def cmd_mind_new(
+    name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR), force: bool = False
+) -> None:
+    _refuse_if_minder_running(force)
     out_dir = Path(mind_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     if name:
@@ -744,7 +1014,37 @@ def cmd_mind_new(name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR)) -> None:
         minder_file = out_dir / f"{stem}.minder"
     md_file = minder_file.with_suffix(".md")
     _make_minder_file(minder_file)
-    _run_minder(minder_file, md_file)
+    _run_minder(minder_file, md_file, force)
+
+
+def cmd_mind_import(
+    minder_path: str,
+    folder: str = "",
+    notes_root: str = str(DEFAULT_NOTES_ROOT),
+    fs_depth: int = DEFAULT_FS_DEPTH,
+    no_clipboard: bool = False,
+) -> None:
+    """Push a saved .minder back into a folder-sync .md tree.
+
+    Used to recover from an interrupted `anno mind open` (the working
+    .minder is copied to notes/.anno/recovery/… on failure) or to apply
+    any .minder produced/saved out-of-band — no GUI is launched."""
+    minder_file = Path(minder_path).expanduser().resolve()
+    if not minder_file.is_file():
+        sys.exit(f"not a file: {minder_file}")
+    if folder:
+        root_dir = Path(folder).expanduser().resolve()
+    else:
+        root_dir = (Path(notes_root) / minder_file.stem).resolve()
+    print(f"mode   : import ({minder_file} → {root_dir}/, fs-depth={fs_depth})")
+    try:
+        out_tree = _push_minder_to_folder(minder_file, root_dir, fs_depth)
+    except RuntimeError as exc:
+        sys.exit(f"error  : {exc}")
+    print(f"saved  : {root_dir}/ ({len(_flatten(out_tree)) - 1} nodes)")
+    if not no_clipboard:
+        _copy_text_to_clipboard(_tree_to_headings_markdown(out_tree))
+        print("copied : markdown to clipboard")
 
 
 def cmd_mind_open(
@@ -754,7 +1054,9 @@ def cmd_mind_open(
     plans_dir: str = str(DEFAULT_PLANS_DIR),
     fs_depth: int = DEFAULT_FS_DEPTH,
     no_clipboard: bool = False,
+    force: bool = False,
 ) -> None:
+    _refuse_if_minder_running(force)
     mode, target = _resolve_open_target(
         name,
         Path(mind_dir).resolve(),
@@ -765,11 +1067,20 @@ def cmd_mind_open(
     if mode == "legacy":
         print(f"mode   : legacy ({target})")
         md_file = target.with_suffix(".md")
-        _run_minder(target, md_file)
+        _run_minder(target, md_file, force)
     elif mode == "plan":
-        _run_minder_smart_sync_plan(target, copy_clipboard)
+        _run_minder_smart_sync_plan(target, copy_clipboard, force)
+    elif mode == "new":
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            print(f"mode   : new ({target} — opening existing)")
+        else:
+            print(f"mode   : new ({target} — created fresh)")
+            _make_minder_file(target)
+        md_file = target.with_suffix(".md")
+        _run_minder(target, md_file, force)
     else:
-        _run_minder_smart_sync_folder(target, fs_depth, copy_clipboard)
+        _run_minder_smart_sync_folder(target, fs_depth, copy_clipboard, force)
 
 
 # --- list callback ---
@@ -1072,6 +1383,14 @@ _no_clipboard_option = option(
     help="Skip copying exported markdown to the clipboard",
     sort_key=14,
 )
+_force_option = option(
+    flags=["--force", "-f"],
+    dest="force",
+    arg_type=bool,
+    default=False,
+    help="Replace a running Minder instead of refusing (kills the open window)",
+    sort_key=15,
+)
 _para_notes_option = option(
     flags=["--notes-dir", "-d"],
     dest="notes_dir",
@@ -1142,15 +1461,16 @@ mind_group.commands.append(
         help="Open a new blank mind map in Minder.",
         callback=cmd_mind_new,
         arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
-        options=[_mind_dir_option],
+        options=[_mind_dir_option, _force_option],
     )
 )
 mind_group.commands.append(
     command(
         name="open",
         help=(
-            "Open a mind map by name. Resolves in order: notes/<name>/ (folder sync), "
-            "notes/plans/<name>.md (plan sync), notes/mind/<name>.minder (legacy)."
+            "Open a mind map by name. Resolves in order: <name>.minder suffix (legacy), "
+            "notes/plans/<name>.md (plan sync), populated notes/<name>/ (folder sync), "
+            "otherwise notes/mind/<name>.minder (created fresh if missing)."
         ),
         callback=cmd_mind_open,
         arguments=[argument(name="name", arg_type=str, sort_key=0)],
@@ -1158,6 +1478,26 @@ mind_group.commands.append(
             _mind_dir_option,
             _notes_root_option,
             _plans_dir_option,
+            _fs_depth_option,
+            _no_clipboard_option,
+            _force_option,
+        ],
+    )
+)
+mind_group.commands.append(
+    command(
+        name="import",
+        help=(
+            "Push a saved .minder file into a folder-sync .md tree (no GUI). "
+            "Default target is notes/<minder-stem>/."
+        ),
+        callback=cmd_mind_import,
+        arguments=[
+            argument(name="minder_path", arg_type=str, sort_key=0),
+            argument(name="folder", arg_type=str, nargs="?", default="", sort_key=1),
+        ],
+        options=[
+            _notes_root_option,
             _fs_depth_option,
             _no_clipboard_option,
         ],
