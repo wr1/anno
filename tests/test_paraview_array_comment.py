@@ -237,6 +237,117 @@ def test_prompt_comment_editor_fallback_reads_temp_file():
     print("ok: _prompt_comment gvim editor fallback")
 
 
+class _FakeArray:
+    def __init__(self, name, values):
+        self._name, self._values = name, values
+
+    def GetName(self):
+        return self._name
+
+    def GetValue(self, i):
+        return self._values[i]
+
+
+class _FakeCellData:
+    def __init__(self, arrays):
+        self._arrays = arrays
+
+    def GetNumberOfArrays(self):
+        return len(self._arrays)
+
+    def GetArray(self, key):
+        if isinstance(key, int):
+            return self._arrays[key]
+        return next((a for a in self._arrays if a._name == key), None)
+
+    def HasArray(self, name):
+        return any(a._name == name for a in self._arrays)
+
+
+class _FakeData:
+    def __init__(self, n, cell_data):
+        self._n, self._cd = n, cell_data
+
+    def GetNumberOfCells(self):
+        return self._n
+
+    def GetCellData(self):
+        return self._cd
+
+
+class _FakeCenters:
+    def GetPoint(self, i):
+        return (float(i), float(i) + 0.5, 0.0)
+
+
+class _FakeFilter:
+    def __init__(self, kind):
+        self.kind = kind
+
+
+class _FakeSource:
+    FileName = "blade.vtu"
+
+    def GetClassName(self):
+        return "vtkUnstructuredGrid"
+
+
+class _FakeAnnotation:
+    Expression = None
+
+
+def _install_paraview_fakes(n_cells=2, arrays=(("Temp", (1.0, 2.0)),)):
+    data = _FakeData(n_cells, _FakeCellData([_FakeArray(n, v) for n, v in arrays]))
+    MOD.pvs.GetActiveSource = lambda: _FakeSource()
+    MOD.pvs.ExtractSelection = lambda registrationName=None, Input=None: _FakeFilter("extract")
+    MOD.pvs.CellCenters = lambda Input=None: _FakeFilter("centers")
+    MOD.pvs.PythonAnnotation = lambda Input=None: _FakeAnnotation()
+    for noop in ("Show", "Hide", "Delete", "Render", "GetActiveView", "SaveScreenshot"):
+        setattr(MOD.pvs, noop, lambda *a, **k: None)
+    MOD.sm.Fetch = lambda obj: _FakeCenters() if getattr(obj, "kind", None) == "centers" else data
+
+
+def test_export_selection_first_creates_with_comment_and_table():
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["ANNO_NOTES_DIR"] = str(tmp)
+        os.environ.pop(MOD.SELECTION_ENV_KEY, None)
+        _install_paraview_fakes(n_cells=2)
+        MOD._prompt_comment = lambda prompt: "interesting cluster at the root"
+        MOD.anno_export_selection()
+
+        files = sorted(Path(tmp).glob("paraview_selection_*.md"))
+        assert len(files) == 1, files
+        text = files[0].read_text()
+        assert text.count("# ParaView Selections — session") == 1
+        assert "## Selection" in text and "2 cells" in text
+        assert "interesting cluster at the root" in text
+        assert "**Source:** blade.vtu" in text
+        assert "![viewport](paraview_screenshot_" in text
+        assert "| Cell ID | Center X | Center Y | Center Z | Temp |" in text
+        assert os.environ.get(MOD.SELECTION_ENV_KEY) == str(files[0])
+    print("ok: export selection first creates file with comment + table")
+
+
+def test_export_selection_appends_and_omits_empty_comment():
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["ANNO_NOTES_DIR"] = str(tmp)
+        os.environ.pop(MOD.SELECTION_ENV_KEY, None)
+        _install_paraview_fakes(n_cells=1)
+
+        MOD._prompt_comment = lambda prompt: "first selection"
+        MOD.anno_export_selection()
+        MOD._prompt_comment = lambda prompt: None  # cancelled -> no comment
+        MOD.anno_export_selection()
+
+        files = sorted(Path(tmp).glob("paraview_selection_*.md"))
+        assert len(files) == 1, files  # appended to the same session file
+        text = files[0].read_text()
+        assert text.count("# ParaView Selections — session") == 1  # header once
+        assert text.count("## Selection") == 2
+        assert "first selection" in text
+    print("ok: export selection appends; empty comment omitted")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for t in tests:
