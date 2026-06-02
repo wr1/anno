@@ -16,7 +16,7 @@ from typing import Optional
 from xml.sax.saxutils import escape as _xml_escape
 
 from treeparse import argument, cli, color_config, command, group, option
-from treeparse.utils.color_config import ColorTheme
+from treeparse.utils.color_config import color_theme
 
 DEFAULT_NOTES_DIR = Path("notes") / "draw"
 DEFAULT_SCREENSHOTS_DIR = Path.home() / "Pictures" / "Screenshots"
@@ -1305,8 +1305,8 @@ app = cli(
     line_connect=True,
     show_types=False,
     show_defaults=True,
-    theme=ColorTheme.GITHUB,
-    colors=color_config.from_theme(ColorTheme.GITHUB),
+    theme=color_theme.GITHUB,
+    colors=color_config.from_theme(color_theme.GITHUB),
 )
 
 _notes_option = option(
