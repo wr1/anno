@@ -16,56 +16,44 @@ An ergonomics experiment for working with visual data — minimal friction from 
 uv tool install .
 ```
 
-## Fish abbreviations
-
-Source the included script from `~/.config/fish/config.fish`:
-
-```fish
-source ~/projects/anno/scripts/shorthand.fish
-```
-
-Or add the abbreviations manually:
-
-```fish
-abbr ani 'anno ink'    # open Inkscape annotator
-abbr anm 'anno mind'   # open Minder mind-mapper
-abbr anc 'anno cam'    # capture from webcam / document camera
-abbr anp 'anno para'   # launch ParaView with export macro
-```
-
 ## Daily workflow
 
 Two terminals side by side — one for anno, one for your editor or chat.
 
 **Annotate a screenshot or figure:**
 ```sh
-ani screen           # grabs latest screenshot → Inkscape
-ani fig diagram.png  # specific file → Inkscape
-ani new              # blank canvas → Inkscape
+anno ink screen           # grabs latest screenshot → Inkscape
+anno ink fig diagram.png  # specific file → Inkscape
+anno ink new              # blank canvas → Inkscape
 # annotate, then Ctrl+Q
 # switch to target app, paste — PNG is already in clipboard
 ```
 
 **Shoot from document camera:**
 ```sh
-anc                  # live preview opens; press SPACE to capture
+anno cam             # live preview opens; any key or click shoots
 # original saved to notes/draw/
 # enhanced + auto-cropped PNG copied to clipboard — just paste
 ```
 
 **Mind map:**
 ```sh
-anm new topic        # blank mind map → Minder
-anm open topic       # reopen existing
+anno mind new topic   # blank mind map → Minder
+anno mind open topic  # reopen existing
 # edit, close Minder
 # paste — markdown is already in clipboard
 ```
 
+`anno mind open <name>` resolves the name in order: a legacy `<name>.minder`, a
+single-file plan at `notes/plans/<name>.md`, a populated `notes/<name>/` folder
+tree, otherwise a fresh map under `notes/mind/`. So the same command edits a
+plan or a folder of notes as a mind map and writes the changes back on close.
+
 **Annotate a 3D mesh in ParaView:**
 ```sh
-anp new mesh.vtu     # opens ParaView with export macro installed
-anp open             # reopen last mesh
-anp open blade_r1    # reopen specific mesh by name
+anno para new mesh.vtu  # opens ParaView with export macro installed
+anno para open         # reopen last mesh
+anno para open blade_r1 # reopen specific mesh by name
 # select cells interactively, then:
 # Macros → Anno_Export_Selection
 # → saves Markdown + screenshot to notes/para/, opens in gvim
