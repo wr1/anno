@@ -1,6 +1,8 @@
 import os
 import shlex
+import shutil
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -57,29 +59,55 @@ def _get_active_color_array():
     return assoc_str, name
 
 
-def _qt_get_comment(array_label):
-    """Pop a modal multi-line input dialog. Return the comment, or None if cancelled."""
-    qtwidgets = None
-    for modname in ("PySide6.QtWidgets", "PySide2.QtWidgets", "PyQt5.QtWidgets"):
+def _prompt_comment(array_label):
+    """Prompt for a comment via an EXTERNAL process. Return text, or None if cancelled.
+
+    We deliberately never import an in-process Qt binding. ParaView's bundled
+    Python may not ship a binding matching the GUI's Qt major version, and loading
+    a mismatched one (e.g. Qt5 PySide2/PyQt5 into a Qt6 ParaView) hard-crashes the
+    application at the native level. An external dialog runs in its own process, so
+    it cannot clash — mirroring how anno_export_selection shells out to gvim/xclip.
+    """
+    prompt = f"Comment on coloring array:\n{array_label}"
+    if shutil.which("zenity"):
         try:
-            qtwidgets = __import__(modname, fromlist=["QtWidgets"])
-            break
-        except Exception:
-            continue
-    if qtwidgets is None:
-        print("ERROR: No Qt bindings available in ParaView for the comment dialog.")
-        return None
+            res = subprocess.run(
+                [
+                    "zenity",
+                    "--entry",
+                    "--title=Anno — Array Comment",
+                    f"--text={prompt}",
+                    "--width=420",
+                ],
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            print(f"zenity dialog failed ({exc}); falling back to editor.")
+        else:
+            if res.returncode != 0:
+                return None  # cancelled / closed
+            text = res.stdout.strip()
+            return text or None
+    return _comment_via_editor()
 
-    app = qtwidgets.QApplication.instance()
-    if app is None:  # should not happen inside the running GUI, but be safe
-        app = qtwidgets.QApplication([])
 
-    title = "Anno — Array Comment"
-    prompt = f"Comment on coloring array:\n\n{array_label}"
-    text, ok = qtwidgets.QInputDialog.getMultiLineText(None, title, prompt, "")
-    if not ok:
-        return None
-    text = text.strip()
+def _comment_via_editor():
+    """Fallback: capture a comment by editing a temp file in gvim (blocks until close)."""
+    fd, tmp = tempfile.mkstemp(suffix=".md", prefix="anno_comment_")
+    os.close(fd)
+    try:
+        subprocess.run(["gvim", "--nofork", tmp])
+        with open(tmp) as f:
+            text = f.read().strip()
+    except Exception as exc:
+        print(f"editor comment capture failed: {exc}")
+        text = ""
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
     return text or None
 
 
@@ -95,7 +123,7 @@ def anno_array_comment():
     else:
         array_label = f"{array_name} [{assoc}]"
 
-    comment = _qt_get_comment(array_label)
+    comment = _prompt_comment(array_label)
     if comment is None:
         print("Anno array comment cancelled.")
         return

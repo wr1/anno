@@ -1,9 +1,10 @@
 """Tests for the ParaView array-comment macro logic.
 
 ParaView's `paraview.simple` / `paraview.servermanager` modules only exist inside
-ParaView, so they are stubbed in sys.modules before loading export.py. The Qt
-dialog and the active-coloring lookup are then patched per test, letting us cover
-the real session/append/Solid-Color/cancel logic without a live ParaView GUI.
+ParaView, so they are stubbed in sys.modules before loading export.py. The comment
+prompt (an external zenity/gvim process) and the active-coloring lookup are then
+patched per test, letting us cover the real session/append/Solid-Color/cancel logic
+without a live ParaView GUI.
 
 Runs standalone (`python tests/test_paraview_array_comment.py`) or under pytest.
 """
@@ -40,7 +41,7 @@ MOD = _load_export_module()
 # Capture the real implementations: the full-flow tests monkeypatch these names
 # on MOD, so the unit tests below call the originals directly.
 _ORIG_GET = MOD._get_active_color_array
-_ORIG_QT = MOD._qt_get_comment
+_ORIG_PROMPT = MOD._prompt_comment
 
 
 def _fresh_session(tmp):
@@ -57,7 +58,7 @@ def test_first_comment_creates_file_with_header():
     with tempfile.TemporaryDirectory() as tmp:
         _fresh_session(tmp)
         MOD._get_active_color_array = lambda: ("POINTS", "Displacement_Z")
-        MOD._qt_get_comment = lambda label: "looks suspicious near the root"
+        MOD._prompt_comment = lambda label: "looks suspicious near the root"
 
         MOD.anno_array_comment()
 
@@ -81,11 +82,11 @@ def test_second_comment_appends_to_same_file():
     with tempfile.TemporaryDirectory() as tmp:
         _fresh_session(tmp)
         MOD._get_active_color_array = lambda: ("POINTS", "Displacement_Z")
-        MOD._qt_get_comment = lambda label: "first comment"
+        MOD._prompt_comment = lambda label: "first comment"
         MOD.anno_array_comment()
 
         MOD._get_active_color_array = lambda: ("CELLS", "von_Mises")
-        MOD._qt_get_comment = lambda label: "second comment"
+        MOD._prompt_comment = lambda label: "second comment"
         MOD.anno_array_comment()
 
         files = _comment_files(tmp)
@@ -102,7 +103,7 @@ def test_solid_color_label():
     with tempfile.TemporaryDirectory() as tmp:
         _fresh_session(tmp)
         MOD._get_active_color_array = lambda: (None, None)
-        MOD._qt_get_comment = lambda label: "no array selected here"
+        MOD._prompt_comment = lambda label: "no array selected here"
         MOD.anno_array_comment()
 
         text = _comment_files(tmp)[0].read_text()
@@ -115,7 +116,7 @@ def test_cancel_creates_no_file():
     with tempfile.TemporaryDirectory() as tmp:
         _fresh_session(tmp)
         MOD._get_active_color_array = lambda: ("POINTS", "Displacement_Z")
-        MOD._qt_get_comment = lambda label: None  # user cancelled
+        MOD._prompt_comment = lambda label: None  # user cancelled
         MOD.anno_array_comment()
 
         assert _comment_files(tmp) == []
@@ -128,7 +129,7 @@ def test_missing_notes_dir_is_noop():
         os.environ.pop("ANNO_NOTES_DIR", None)
         os.environ.pop(MOD.SESSION_ENV_KEY, None)
         MOD._get_active_color_array = lambda: ("POINTS", "X")
-        MOD._qt_get_comment = lambda label: "x"
+        MOD._prompt_comment = lambda label: "x"
         MOD.anno_array_comment()  # must not raise
         assert _comment_files(tmp) == []
     print("ok: missing ANNO_NOTES_DIR is a no-op")
@@ -183,41 +184,57 @@ def test_get_active_color_array_sequence_fallback():
     print("ok: _get_active_color_array sequence fallback")
 
 
-def test_qt_get_comment_with_stubbed_binding():
-    # Inject a fake PySide6.QtWidgets so the try-import chain resolves.
+class _FakeProc:
+    def __init__(self, returncode=0, stdout=""):
+        self.returncode = returncode
+        self.stdout = stdout
+
+
+def test_prompt_comment_uses_zenity_external_process():
+    """Confirm the comment is captured via an external process and NO Qt binding
+    is imported (the Qt-into-ParaView mismatch is what crashed the GUI)."""
+    real_which, real_run = MOD.shutil.which, MOD.subprocess.run
     captured = {}
-
-    class FakeApp:
-        @staticmethod
-        def instance():
-            return object()
-
-    class FakeInputDialog:
-        ret = ("  hello world  ", True)
-
-        @staticmethod
-        def getMultiLineText(parent, title, prompt, text):
-            captured["prompt"] = prompt
-            return FakeInputDialog.ret
-
-    qtw = types.ModuleType("PySide6.QtWidgets")
-    qtw.QApplication = FakeApp
-    qtw.QInputDialog = FakeInputDialog
-    pkg = types.ModuleType("PySide6")
-    pkg.QtWidgets = qtw
-    sys.modules["PySide6"] = pkg
-    sys.modules["PySide6.QtWidgets"] = qtw
     try:
-        assert _ORIG_QT("Arr [POINTS]") == "hello world"  # stripped
-        assert "Arr [POINTS]" in captured["prompt"]
-        FakeInputDialog.ret = ("ignored", False)  # cancelled
-        assert _ORIG_QT("Arr") is None
-        FakeInputDialog.ret = ("   ", True)  # empty after strip
-        assert _ORIG_QT("Arr") is None
+        MOD.shutil.which = lambda name: "/usr/bin/zenity" if name == "zenity" else None
+
+        def fake_run(cmd, capture_output=False, text=False):
+            captured["cmd"] = cmd
+            return _FakeProc(0, "  a tidy comment \n")
+
+        MOD.subprocess.run = fake_run
+        assert _ORIG_PROMPT("Temp [POINTS]") == "a tidy comment"  # stripped
+        assert captured["cmd"][0] == "zenity"
+        assert any("Temp [POINTS]" in str(a) for a in captured["cmd"])
+
+        MOD.subprocess.run = lambda *a, **k: _FakeProc(1, "ignored")  # cancelled
+        assert _ORIG_PROMPT("Temp") is None
+
+        MOD.subprocess.run = lambda *a, **k: _FakeProc(0, "   \n")  # empty
+        assert _ORIG_PROMPT("Temp") is None
     finally:
-        del sys.modules["PySide6.QtWidgets"]
-        del sys.modules["PySide6"]
-    print("ok: _qt_get_comment with stubbed Qt binding")
+        MOD.shutil.which, MOD.subprocess.run = real_which, real_run
+    # No Qt binding should ever have been imported by loading/using the module.
+    assert not any(m.startswith(("PySide", "PyQt")) for m in sys.modules)
+    print("ok: _prompt_comment uses external zenity, no Qt import")
+
+
+def test_prompt_comment_editor_fallback_reads_temp_file():
+    real_which, real_run = MOD.shutil.which, MOD.subprocess.run
+    try:
+        MOD.shutil.which = lambda name: None  # no zenity -> gvim fallback
+
+        def fake_run(cmd, *a, **k):
+            # cmd == ["gvim", "--nofork", <path>]; simulate the user typing + saving.
+            with open(cmd[-1], "w") as f:
+                f.write("edited in the editor\n")
+            return _FakeProc(0, "")
+
+        MOD.subprocess.run = fake_run
+        assert _ORIG_PROMPT("X [CELLS]") == "edited in the editor"
+    finally:
+        MOD.shutil.which, MOD.subprocess.run = real_which, real_run
+    print("ok: _prompt_comment gvim editor fallback")
 
 
 if __name__ == "__main__":
