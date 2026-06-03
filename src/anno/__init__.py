@@ -174,26 +174,19 @@ def _make_blank_svg(path: Path, w: int = 1920, h: int = 1080) -> None:
     path.write_text(svg)
 
 
-def cmd_ink_new(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
+def cmd_ink_open(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
+    """Find-or-create: open <name>.svg if it exists, create a blank one if it
+    doesn't, or open a fresh timestamped scratch SVG when no name is given."""
     out_dir = Path(notes_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     if name:
         svg = out_dir / f"{Path(name).stem}.svg"
-        if svg.exists():
-            sys.exit(f"Already exists: {svg}")
+        if not svg.exists():
+            _make_blank_svg(svg)
     else:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         svg = out_dir / f"fig_{ts}.svg"
-    _make_blank_svg(svg)
-    print(f"opening {svg}")
-    _run_inkscape_and_export(svg)
-
-
-def cmd_ink_open(name: str, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
-    out_dir = Path(notes_dir)
-    svg = out_dir / f"{Path(name).stem}.svg"
-    if not svg.exists():
-        sys.exit(f"Not found: {svg}")
+        _make_blank_svg(svg)
     print(f"opening {svg}")
     _run_inkscape_and_export(svg)
 
@@ -982,23 +975,6 @@ def _flatten(node: _MindNode) -> list[_MindNode]:
 # --- mind callbacks ---
 
 
-def cmd_mind_new(name: str = "", mind_dir: str = str(DEFAULT_MIND_DIR), force: bool = False) -> None:
-    _refuse_if_minder_running(force)
-    out_dir = Path(mind_dir).resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    if name:
-        minder_file = out_dir / f"{Path(name).stem}.minder"
-        if minder_file.exists():
-            sys.exit(f"Already exists: {minder_file}")
-    else:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        stem = f"mm_{ts}"
-        minder_file = out_dir / f"{stem}.minder"
-    md_file = minder_file.with_suffix(".md")
-    _make_minder_file(minder_file)
-    _run_minder(minder_file, md_file, force)
-
-
 def cmd_mind_import(
     minder_path: str,
     folder: str = "",
@@ -1030,7 +1006,7 @@ def cmd_mind_import(
 
 
 def cmd_mind_open(
-    name: str,
+    name: str = "",
     mind_dir: str = str(DEFAULT_MIND_DIR),
     notes_root: str = str(DEFAULT_NOTES_ROOT),
     plans_dir: str = str(DEFAULT_PLANS_DIR),
@@ -1039,6 +1015,16 @@ def cmd_mind_open(
     force: bool = False,
 ) -> None:
     _refuse_if_minder_running(force)
+    if not name:
+        # No name: open a fresh timestamped scratch map.
+        out_dir = Path(mind_dir).resolve()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        minder_file = out_dir / f"mm_{ts}.minder"
+        print(f"mode   : new ({minder_file} — created fresh)")
+        _make_minder_file(minder_file)
+        _run_minder(minder_file, minder_file.with_suffix(".md"), force)
+        return
     mode, target = _resolve_open_target(
         name,
         Path(mind_dir).resolve(),
@@ -1394,22 +1380,14 @@ _log_option = option(
 ink_group = group(
     name="ink",
     help="Annotate figures with Inkscape. On close: saves SVG, copies result as PNG to clipboard.",
-)
-ink_group.commands.append(
-    command(
-        name="new",
-        help="Open a new blank SVG in Inkscape.",
-        callback=cmd_ink_new,
-        arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
-        options=[_notes_option],
-    )
+    default="open",
 )
 ink_group.commands.append(
     command(
         name="open",
-        help="Open an existing SVG annotation in Inkscape.",
+        help="Open an SVG by name (created blank if missing), or a fresh scratch SVG with no name.",
         callback=cmd_ink_open,
-        arguments=[argument(name="name", arg_type=str, sort_key=0)],
+        arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
         options=[_notes_option],
     )
 )
@@ -1436,15 +1414,7 @@ app.subgroups.append(ink_group)
 mind_group = group(
     name="mind",
     help="Mind maps with Minder. On close: exports markdown, copies to clipboard.",
-)
-mind_group.commands.append(
-    command(
-        name="new",
-        help="Open a new blank mind map in Minder.",
-        callback=cmd_mind_new,
-        arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
-        options=[_mind_dir_option, _force_option],
-    )
+    default="open",
 )
 mind_group.commands.append(
     command(
@@ -1452,10 +1422,11 @@ mind_group.commands.append(
         help=(
             "Open a mind map by name. Resolves in order: <name>.minder suffix (legacy), "
             "notes/plans/<name>.md (plan sync), populated notes/<name>/ (folder sync), "
-            "otherwise notes/mind/<name>.minder (created fresh if missing)."
+            "otherwise notes/mind/<name>.minder (created fresh if missing). "
+            "With no name, opens a fresh scratch map."
         ),
         callback=cmd_mind_open,
-        arguments=[argument(name="name", arg_type=str, sort_key=0)],
+        arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
         options=[
             _mind_dir_option,
             _notes_root_option,

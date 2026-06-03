@@ -1,9 +1,9 @@
 [project]
 name = "anno"
-version = "0.1.4"
+version = "0.2.0"
 requires-python = ">=3.11"
 dependencies = [
-    "treeparse>=0.2.8",
+    "treeparse>=0.3.0",
 ]
 
 [project.scripts]

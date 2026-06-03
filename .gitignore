@@ -10,3 +10,4 @@ notes/
 *.minder
 help.txt
 
+.claude/

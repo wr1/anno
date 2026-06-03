@@ -24,7 +24,8 @@ Two terminals side by side — one for anno, one for your editor or chat.
 ```sh
 anno ink screen           # grabs latest screenshot → Inkscape
 anno ink fig diagram.png  # specific file → Inkscape
-anno ink new              # blank canvas → Inkscape
+anno ink                  # blank scratch canvas → Inkscape
+anno ink notes            # open notes.svg (created blank if new)
 # annotate, then Ctrl+Q
 # switch to target app, paste — PNG is already in clipboard
 ```
@@ -38,16 +39,18 @@ anno cam             # live preview opens; any key or click shoots
 
 **Mind map:**
 ```sh
-anno mind new topic   # blank mind map → Minder
-anno mind open topic  # reopen existing
+anno mind topic       # open topic (created blank if new) → Minder
+anno mind             # blank scratch map → Minder
 # edit, close Minder
 # paste — markdown is already in clipboard
 ```
 
-`anno mind open <name>` resolves the name in order: a legacy `<name>.minder`, a
+`anno mind <name>` resolves the name in order: a legacy `<name>.minder`, a
 single-file plan at `notes/plans/<name>.md`, a populated `notes/<name>/` folder
 tree, otherwise a fresh map under `notes/mind/`. So the same command edits a
 plan or a folder of notes as a mind map and writes the changes back on close.
+(`ink` and `mind` default to `open`, so the verb is optional — `anno mind topic`
+is `anno mind open topic`.)
 
 **Annotate a 3D mesh in ParaView:**
 ```sh
@@ -75,12 +78,10 @@ anno list            # all saved SVGs and mind maps
 ## Commands
 
 ```sh
-anno ink new [name]       # blank SVG in Inkscape
-anno ink open <name>      # reopen existing SVG
+anno ink [name]           # open SVG (created blank if new); no name → scratch
 anno ink fig [file]       # embed PNG/JPG into SVG, open in Inkscape
 anno ink screen           # use latest screenshot as figure
-anno mind new [name]      # blank mind map in Minder
-anno mind open <name>     # reopen existing mind map
+anno mind [name]          # open mind map (created if new); no name → scratch
 anno mind import <minder> # apply a saved .minder to its folder tree (no GUI)
 anno cam                  # webcam capture → enhanced PNG to clipboard
 anno para new <file>      # open mesh in ParaView
@@ -88,6 +89,11 @@ anno para open [name]     # reopen last (or named) mesh from log
 anno list                 # list annotations and mind maps
 anno log [date]           # show activity log (default: today)
 ```
+
+`ink` and `mind` use `open` as their default subcommand, so `anno ink foo` and
+`anno mind foo` are shorthand for `anno ink open foo` / `anno mind open foo`.
+`open` is find-or-create: it opens an existing annotation or makes a new one,
+absorbing the old `new` command.
 
 Options like `--notes-dir`, `--mind-dir`, and `--screenshots-dir` are available on the relevant subcommands.
 
