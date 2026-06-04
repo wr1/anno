@@ -11,6 +11,4 @@ notes/
 help.txt
 CLAUDE.md
 
-.claude/*
-!.claude/skills/
-!.claude/skills/**
+.claude/
