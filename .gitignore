@@ -9,5 +9,8 @@ output.png
 notes/
 *.minder
 help.txt
+CLAUDE.md
 
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
