@@ -21,7 +21,7 @@ from anno.para_launch import cmd_para_new, cmd_para_open
 app = cli(
     name="anno",
     help=(
-        "Quick CLI for annotating figures in Inkscape, building mind maps in Minder, "
+        "CLI for annotating figures in Inkscape, building mind maps in Minder, "
         "capturing from webcam, and annotating 3D meshes in ParaView."
     ),
     line_connect=True,

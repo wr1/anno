@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/wr1/anno)](https://github.com/wr1/anno/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/)
 
-Quick CLI for annotating figures in Inkscape, building mind maps in Minder, capturing from a webcam or document camera, and annotating 3D meshes in ParaView.
+CLI for annotating figures in Inkscape, building mind maps in Minder, capturing from a webcam or document camera, and annotating 3D meshes in ParaView.
 
 An ergonomics experiment for working with visual data — minimal friction from capture to clipboard.
 
