@@ -58,15 +58,16 @@ anno para new mesh.vtu  # opens ParaView with export macro installed
 anno para open         # reopen last mesh
 anno para open blade_r1 # reopen specific mesh by name
 # select cells interactively, then:
-# Macros → Anno_Export_Selection
+# Macros → Anno Selection Comment
 # → saves Markdown + screenshot to notes/para/, opens in gvim
 # → close gvim → full content copied to clipboard
+# (Anno Array Comment does the same for the whole coloring array)
 ```
 
 To set a keyboard shortcut (one-time):
 1. Open ParaView via `anno para <file>`
 2. Tools → Customize Shortcuts
-3. Search `Anno_Export_Selection`, click it, press your key (e.g. Ctrl+Shift+N)
+3. Search `Anno Selection Comment`, click it, press your key (e.g. Ctrl+Shift+N)
 
 **Review what you did today:**
 ```sh

@@ -19,11 +19,8 @@ jobs:
       - name: Install
         run: uv sync
 
-      - name: Ruff lint
-        run: uv run ruff check src/
-
-      - name: Ruff format
-        run: uv run ruff format --check src/
+      - name: Pre-commit (ruff lint + format)
+        run: uv run pre-commit run --all-files
 
   smoke:
     runs-on: ubuntu-latest

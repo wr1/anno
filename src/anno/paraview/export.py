@@ -75,7 +75,7 @@ def _prompt_comment(prompt):
                 [
                     "zenity",
                     "--entry",
-                    "--title=Anno — Array Comment",
+                    "--title=Anno — Comment",
                     f"--text={prompt}",
                     "--width=420",
                 ],
