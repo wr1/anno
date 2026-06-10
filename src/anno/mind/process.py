@@ -10,6 +10,7 @@ from pathlib import Path
 from anno.clipboard import copy_text_to_clipboard
 from anno.constants import DEFAULT_NOTES_ROOT, MINDER, MINDER_GUI_MIN_ELAPSED
 from anno.log_util import log_activity
+from anno.mind.tree import parse_bullets_markdown, tree_to_numbered_markdown
 
 
 def existing_minder_pids() -> list[int]:
@@ -112,7 +113,11 @@ def run_minder(minder_file: Path, md_file: Path, force: bool = False) -> None:
     log_activity("mind_export", minder_file)
     minder_export_markdown(minder_file, md_file)
     md = md_file.read_text() if md_file.exists() else ""
-    copy_text_to_clipboard(md)
+    if md.strip():
+        tree = parse_bullets_markdown(md)
+        copy_text_to_clipboard(tree_to_numbered_markdown(tree))
+    else:
+        copy_text_to_clipboard(md)
     print(f"saved  : {minder_file}")
     print(f"saved  : {md_file}")
     print("copied : markdown to clipboard")

@@ -27,6 +27,7 @@ from anno.mind.tree import (
     parse_headings_markdown,
     tree_to_headings_markdown,
     tree_to_minder_xml,
+    tree_to_numbered_markdown,
 )
 
 
@@ -109,7 +110,7 @@ def run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool, force: bool 
         plan_md.write_text(tree_to_headings_markdown(out_tree))
         print(f"saved  : {plan_md}")
         if copy_clipboard:
-            copy_text_to_clipboard(plan_md.read_text())
+            copy_text_to_clipboard(tree_to_numbered_markdown(out_tree))
             print("copied : markdown to clipboard")
 
 
@@ -173,7 +174,7 @@ def run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard: 
             )
         print(f"saved  : {root_dir}/ ({len(flatten(out_tree)) - 1} nodes)")
         if copy_clipboard:
-            copy_text_to_clipboard(tree_to_headings_markdown(out_tree))
+            copy_text_to_clipboard(tree_to_numbered_markdown(out_tree))
             print("copied : markdown to clipboard")
 
 
@@ -206,7 +207,7 @@ def cmd_mind_import(
         sys.exit(f"error  : {exc}")
     print(f"saved  : {root_dir}/ ({len(flatten(out_tree)) - 1} nodes)")
     if not no_clipboard:
-        copy_text_to_clipboard(tree_to_headings_markdown(out_tree))
+        copy_text_to_clipboard(tree_to_numbered_markdown(out_tree))
         print("copied : markdown to clipboard")
 
 

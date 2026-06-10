@@ -141,6 +141,48 @@ def tree_to_headings_markdown(root: MindNode, base_level: int = 1) -> str:
     return "\n".join(out)
 
 
+def tree_to_numbered_markdown(root: MindNode) -> str:
+    """Render a tree as a numbered outline.
+
+    The outline numbers (1., 1.1, 1.1.1, ...) make the hierarchy explicit in the
+    text so it survives aggressive whitespace stripping / flattening by some
+    CLI agents and paste targets.
+
+    A top-level # heading is emitted for the root title (synthetic "root" is
+    omitted). Node notes appear indented under their item, before any children.
+    """
+    out: list[str] = []
+
+    def _walk(node: MindNode, numbers: list[int], depth: int) -> None:
+        if numbers:
+            num_str = ".".join(str(n) for n in numbers)
+            indent = "   " * depth
+            # Top level gets "1. Title"; deeper use "1.1 Title" (cleaner, still unambiguous)
+            label = f"{num_str}. " if len(numbers) == 1 else f"{num_str} "
+            out.append(f"{indent}{label}{node.title}")
+            if node.note:
+                note_indent = "   " * (depth + 1)
+                for line in node.note.splitlines():
+                    out.append(f"{note_indent}{line}")
+        for i, child in enumerate(node.children, 1):
+            _walk(child, numbers + [i], depth + 1)
+
+    # Emit a top-level heading for the root title (skip synthetic "root")
+    if root.title and root.title != "root":
+        out.append(f"# {root.title}")
+        if root.note:
+            out.append("")
+            out.append(root.note)
+        out.append("")
+
+    # Number the direct children of the root at depth 0
+    for i, child in enumerate(root.children, 1):
+        _walk(child, [i], 0)
+
+    out.append("")
+    return "\n".join(out)
+
+
 # --- markdown → Minder XML ---
 
 
