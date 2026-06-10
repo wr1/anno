@@ -171,6 +171,14 @@ def anno_export_selection():
     pvs.Render()
 
     data = sm.Fetch(extract)
+    # Composite sources (Exodus/IOSS, .vtm, …) fetch as vtkMultiBlockDataSet, which
+    # has no flat GetCellData; flatten through MergeBlocks before sampling.
+    merge = None
+    sample_source = extract
+    if not hasattr(data, "GetCellData"):
+        merge = pvs.MergeBlocks(registrationName=f"AnnoMerge_{timestamp}", Input=extract)
+        sample_source = merge
+        data = sm.Fetch(merge)
     n_cells = data.GetNumberOfCells()
 
     # Ask for a comment (cancel/empty -> export the selection without one).
@@ -214,7 +222,7 @@ def anno_export_selection():
     entry.append("| Cell ID | Center X | Center Y | Center Z | " + " | ".join(array_names) + " |")
     entry.append("|" + "---|" * (4 + len(array_names)))
 
-    cell_centers = pvs.CellCenters(Input=extract)
+    cell_centers = pvs.CellCenters(Input=sample_source)
     centers_data = sm.Fetch(cell_centers)
     for i in range(n_cells):
         orig_id = (
@@ -237,6 +245,8 @@ def anno_export_selection():
 
     # Tidy the pipeline so repeated exports in one session don't pile up filters.
     pvs.Delete(cell_centers)
+    if merge is not None:
+        pvs.Delete(merge)
     pvs.Hide(extract)
     pvs.Delete(extract)
     pvs.Render()

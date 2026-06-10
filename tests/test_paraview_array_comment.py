@@ -280,6 +280,16 @@ class _FakeCenters:
         return (float(i), float(i) + 0.5, 0.0)
 
 
+class _FakeMultiBlock:
+    """Composite dataset: has cell counts but NO GetCellData (like vtkMultiBlockDataSet)."""
+
+    def __init__(self, n):
+        self._n = n
+
+    def GetNumberOfCells(self):
+        return self._n
+
+
 class _FakeFilter:
     def __init__(self, kind):
         self.kind = kind
@@ -296,15 +306,41 @@ class _FakeAnnotation:
     Expression = None
 
 
-def _install_paraview_fakes(n_cells=2, arrays=(("Temp", (1.0, 2.0)),)):
+def _install_paraview_fakes(n_cells=2, arrays=(("Temp", (1.0, 2.0)),), multiblock=False):
+    """Install pvs/sm fakes; returns a dict recording filter activity.
+
+    With multiblock=True, fetching the extract yields a composite dataset without
+    GetCellData (as vtkMultiBlockDataSet); only a MergeBlocks filter's output is flat.
+    """
     data = _FakeData(n_cells, _FakeCellData([_FakeArray(n, v) for n, v in arrays]))
+    calls = {"merge_blocks": 0, "deleted": []}
+
+    def make_filter(kind):
+        calls.setdefault(kind, 0)
+        calls[kind] += 1
+        return _FakeFilter(kind)
+
     MOD.pvs.GetActiveSource = lambda: _FakeSource()
-    MOD.pvs.ExtractSelection = lambda registrationName=None, Input=None: _FakeFilter("extract")
-    MOD.pvs.CellCenters = lambda Input=None: _FakeFilter("centers")
+    MOD.pvs.ExtractSelection = lambda registrationName=None, Input=None: make_filter("extract")
+    MOD.pvs.CellCenters = lambda Input=None: make_filter("centers")
+    MOD.pvs.MergeBlocks = lambda registrationName=None, Input=None: (
+        calls.__setitem__("merge_blocks", calls["merge_blocks"] + 1) or _FakeFilter("merged")
+    )
     MOD.pvs.PythonAnnotation = lambda Input=None: _FakeAnnotation()
-    for noop in ("Show", "Hide", "Delete", "Render", "GetActiveView", "SaveScreenshot"):
+    for noop in ("Show", "Hide", "Render", "GetActiveView", "SaveScreenshot"):
         setattr(MOD.pvs, noop, lambda *a, **k: None)
-    MOD.sm.Fetch = lambda obj: _FakeCenters() if getattr(obj, "kind", None) == "centers" else data
+    MOD.pvs.Delete = lambda obj=None: calls["deleted"].append(getattr(obj, "kind", obj.__class__.__name__))
+
+    def fetch(obj):
+        kind = getattr(obj, "kind", None)
+        if kind == "centers":
+            return _FakeCenters()
+        if multiblock:
+            return data if kind == "merged" else _FakeMultiBlock(n_cells)
+        return data
+
+    MOD.sm.Fetch = fetch
+    return calls
 
 
 def test_export_selection_first_creates_with_comment_and_table():
@@ -346,6 +382,39 @@ def test_export_selection_appends_and_omits_empty_comment():
         assert text.count("## Selection") == 2
         assert "first selection" in text
     print("ok: export selection appends; empty comment omitted")
+
+
+def test_export_selection_multiblock_source_merges_blocks():
+    """Composite (e.g. Exodus/multiblock) sources crash GetCellData unless flattened."""
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["ANNO_NOTES_DIR"] = str(tmp)
+        os.environ.pop(MOD.SELECTION_ENV_KEY, None)
+        calls = _install_paraview_fakes(n_cells=2, multiblock=True)
+        MOD._prompt_comment = lambda prompt: "multiblock selection"
+        MOD.anno_export_selection()
+
+        files = sorted(Path(tmp).glob("paraview_selection_*.md"))
+        assert len(files) == 1, files
+        text = files[0].read_text()
+        assert "2 cells" in text
+        assert "multiblock selection" in text
+        assert "| Cell ID | Center X | Center Y | Center Z | Temp |" in text
+        assert calls["merge_blocks"] == 1
+        assert "merged" in calls["deleted"]  # merge filter cleaned up
+    print("ok: export selection flattens multiblock sources via MergeBlocks")
+
+
+def test_export_selection_flat_source_skips_merge_blocks():
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["ANNO_NOTES_DIR"] = str(tmp)
+        os.environ.pop(MOD.SELECTION_ENV_KEY, None)
+        calls = _install_paraview_fakes(n_cells=1)
+        MOD._prompt_comment = lambda prompt: None
+        MOD.anno_export_selection()
+
+        assert calls["merge_blocks"] == 0
+        assert "extract" in calls["deleted"] and "centers" in calls["deleted"]
+    print("ok: export selection skips MergeBlocks for flat datasets")
 
 
 if __name__ == "__main__":
