@@ -20,6 +20,7 @@ from anno.mind.process import (
     save_recovery_minder,
 )
 from anno.mind.styles import make_minder_file
+from anno.mind.templates import load_template
 from anno.mind.tree import (
     MindNode,
     flatten,
@@ -181,6 +182,15 @@ def run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard: 
 # --- mind callbacks ---
 
 
+def _seed_fresh(path: Path, template: str, root_title: str) -> None:
+    """Write a fresh .minder at `path`, seeded from `template` if given."""
+    if template:
+        tree = load_template(template, root_title=root_title)
+        path.write_text(tree_to_minder_xml(tree))
+    else:
+        make_minder_file(path)
+
+
 def cmd_mind_import(
     minder_path: str,
     folder: str = "",
@@ -219,6 +229,7 @@ def cmd_mind_open(
     fs_depth: int = DEFAULT_FS_DEPTH,
     no_clipboard: bool = False,
     force: bool = False,
+    template: str = "",
 ) -> None:
     refuse_if_minder_running(force)
     if not name:
@@ -228,7 +239,7 @@ def cmd_mind_open(
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         minder_file = out_dir / f"mm_{ts}.minder"
         print(f"mode   : new ({minder_file} — created fresh)")
-        make_minder_file(minder_file)
+        _seed_fresh(minder_file, template, "Project")
         run_minder(minder_file, minder_file.with_suffix(".md"), force)
         return
     mode, target = resolve_open_target(
@@ -238,6 +249,9 @@ def cmd_mind_open(
         Path(plans_dir).resolve(),
     )
     copy_clipboard = not no_clipboard
+    # --template only seeds a brand-new map; warn rather than silently no-op.
+    if template and not (mode == "new" and not target.exists()):
+        print("note   : --template ignored (opening existing content)")
     if mode == "legacy":
         print(f"mode   : legacy ({target})")
         md_file = target.with_suffix(".md")
@@ -250,7 +264,7 @@ def cmd_mind_open(
             print(f"mode   : new ({target} — opening existing)")
         else:
             print(f"mode   : new ({target} — created fresh)")
-            make_minder_file(target)
+            _seed_fresh(target, template, target.stem)
         md_file = target.with_suffix(".md")
         run_minder(target, md_file, force)
     else:

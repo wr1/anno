@@ -95,6 +95,14 @@ _force_option = option(
     help="Replace a running Minder instead of refusing (kills the open window)",
     sort_key=15,
 )
+_template_option = option(
+    flags=["--template", "-t"],
+    dest="template",
+    arg_type=str,
+    default="",
+    help="Seed a fresh map from a template (e.g. 'software'). Ignored when opening existing content.",
+    sort_key=16,
+)
 _para_notes_option = option(
     flags=["--notes-dir", "-d"],
     dest="notes_dir",
@@ -168,6 +176,7 @@ mind_group.commands.append(
             _fs_depth_option,
             _no_clipboard_option,
             _force_option,
+            _template_option,
         ],
     )
 )
