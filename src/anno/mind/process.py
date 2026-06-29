@@ -101,7 +101,12 @@ def refuse_if_minder_running(force: bool) -> None:
     )
 
 
-def run_minder(minder_file: Path, md_file: Path, force: bool = False) -> None:
+def run_minder(
+    minder_file: Path,
+    md_file: Path,
+    force: bool = False,
+    copy_clipboard: bool = True,
+) -> None:
     try:
         minder_launch_gui(minder_file, force)
     except RuntimeError as exc:
@@ -113,14 +118,15 @@ def run_minder(minder_file: Path, md_file: Path, force: bool = False) -> None:
     log_activity("mind_export", minder_file)
     minder_export_markdown(minder_file, md_file)
     md = md_file.read_text() if md_file.exists() else ""
-    if md.strip():
-        tree = parse_bullets_markdown(md)
-        copy_text_to_clipboard(tree_to_numbered_markdown(tree))
-    else:
-        copy_text_to_clipboard(md)
     print(f"saved  : {minder_file}")
     print(f"saved  : {md_file}")
-    print("copied : markdown to clipboard")
+    if copy_clipboard:
+        if md.strip():
+            tree = parse_bullets_markdown(md)
+            copy_text_to_clipboard(tree_to_numbered_markdown(tree))
+        else:
+            copy_text_to_clipboard(md)
+        print("copied : markdown to clipboard")
 
 
 # Both entry points (`minder_launch_gui`, `minder_export_markdown`) reap any

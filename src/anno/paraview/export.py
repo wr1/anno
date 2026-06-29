@@ -15,6 +15,33 @@ SESSION_ENV_KEY = "ANNO_ARRAY_COMMENTS_FILE"
 SELECTION_ENV_KEY = "ANNO_SELECTION_FILE"
 
 
+def _dataset_has_cell_data(data) -> bool:
+    try:
+        return data.GetCellData() is not None
+    except AttributeError:
+        return False
+
+
+def _flatten_for_sampling(extract, timestamp: str):
+    """Return ``(sample_source, vtk_data, merge_filter_or_None)`` for cell export.
+
+    Composite extractions (Exodus/IOSS, .vtm, …) fetch as vtkMultiBlockDataSet
+    without flat cell arrays; flatten through MergeBlocks when needed.
+    """
+    data = sm.Fetch(extract)
+    if _dataset_has_cell_data(data):
+        return extract, data, None
+
+    merge = pvs.MergeBlocks(registrationName=f"AnnoMerge_{timestamp}", Input=extract)
+    data = sm.Fetch(merge)
+    if not _dataset_has_cell_data(data):
+        pvs.Delete(merge)
+        raise RuntimeError(
+            "Could not flatten the selection for cell export: MergeBlocks did not produce a dataset with cell data."
+        )
+    return merge, data, merge
+
+
 def _get_active_color_array():
     """Return (association, array_name) for the active coloring, or (None, None).
 
@@ -170,15 +197,7 @@ def anno_export_selection():
     pvs.Show(extract)
     pvs.Render()
 
-    data = sm.Fetch(extract)
-    # Composite sources (Exodus/IOSS, .vtm, …) fetch as vtkMultiBlockDataSet, which
-    # has no flat GetCellData; flatten through MergeBlocks before sampling.
-    merge = None
-    sample_source = extract
-    if not hasattr(data, "GetCellData"):
-        merge = pvs.MergeBlocks(registrationName=f"AnnoMerge_{timestamp}", Input=extract)
-        sample_source = merge
-        data = sm.Fetch(merge)
+    sample_source, data, merge = _flatten_for_sampling(extract, timestamp)
     n_cells = data.GetNumberOfCells()
 
     # Ask for a comment (cancel/empty -> export the selection without one).

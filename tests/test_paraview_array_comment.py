@@ -306,11 +306,17 @@ class _FakeAnnotation:
     Expression = None
 
 
-def _install_paraview_fakes(n_cells=2, arrays=(("Temp", (1.0, 2.0)),), multiblock=False):
+def _install_paraview_fakes(
+    n_cells=2,
+    arrays=(("Temp", (1.0, 2.0)),),
+    multiblock=False,
+    merge_still_composite=False,
+):
     """Install pvs/sm fakes; returns a dict recording filter activity.
 
     With multiblock=True, fetching the extract yields a composite dataset without
     GetCellData (as vtkMultiBlockDataSet); only a MergeBlocks filter's output is flat.
+    With merge_still_composite=True, MergeBlocks runs but still returns a composite.
     """
     data = _FakeData(n_cells, _FakeCellData([_FakeArray(n, v) for n, v in arrays]))
     calls = {"merge_blocks": 0, "deleted": []}
@@ -336,7 +342,9 @@ def _install_paraview_fakes(n_cells=2, arrays=(("Temp", (1.0, 2.0)),), multibloc
         if kind == "centers":
             return _FakeCenters()
         if multiblock:
-            return data if kind == "merged" else _FakeMultiBlock(n_cells)
+            if kind == "merged" and not merge_still_composite:
+                return data
+            return _FakeMultiBlock(n_cells)
         return data
 
     MOD.sm.Fetch = fetch
@@ -415,6 +423,23 @@ def test_export_selection_flat_source_skips_merge_blocks():
         assert calls["merge_blocks"] == 0
         assert "extract" in calls["deleted"] and "centers" in calls["deleted"]
     print("ok: export selection skips MergeBlocks for flat datasets")
+
+
+def test_export_selection_merge_failure_raises():
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["ANNO_NOTES_DIR"] = str(tmp)
+        os.environ.pop(MOD.SELECTION_ENV_KEY, None)
+        calls = _install_paraview_fakes(n_cells=1, multiblock=True, merge_still_composite=True)
+        MOD._prompt_comment = lambda prompt: None
+        try:
+            MOD.anno_export_selection()
+        except RuntimeError as exc:
+            assert "MergeBlocks" in str(exc)
+            assert calls["merge_blocks"] == 1
+            assert "merged" in calls["deleted"]
+        else:
+            raise AssertionError("expected RuntimeError when MergeBlocks stays composite")
+    print("ok: export selection raises when MergeBlocks cannot flatten")
 
 
 if __name__ == "__main__":

@@ -19,8 +19,7 @@ from anno.mind.process import (
     run_minder,
     save_recovery_minder,
 )
-from anno.mind.styles import make_minder_file
-from anno.mind.templates import load_template
+from anno.mind.templates import TemplateNotFoundError, seed_minder
 from anno.mind.tree import (
     MindNode,
     flatten,
@@ -66,7 +65,21 @@ def resolve_open_target(
     return ("new", (mind_dir / f"{name}.minder").resolve())
 
 
-def run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool, force: bool = False) -> None:
+def template_applies(mode: str, target: Path) -> bool:
+    """True when ``--template`` should seed content for this open target."""
+    if mode == "new":
+        return not target.exists()
+    if mode == "plan":
+        return not target.read_text().strip()
+    return False
+
+
+def run_minder_smart_sync_plan(
+    plan_md: Path,
+    copy_clipboard: bool,
+    force: bool = False,
+    template: str = "",
+) -> None:
     print(f"mode   : plan sync ({plan_md})")
     with tempfile.TemporaryDirectory(prefix="anno-plan-") as td:
         tmp_minder = Path(td) / f"{plan_md.stem}.minder"
@@ -77,11 +90,10 @@ def run_minder_smart_sync_plan(plan_md: Path, copy_clipboard: bool, force: bool 
             in_count = len(flatten(tree)) - 1
             print(f"import : {in_count} nodes from {plan_md.name}")
         else:
-            # Fresh plan: seed with the stem as the root title.
-            seed = MindNode(title=plan_md.stem)
-            tmp_minder.write_text(tree_to_minder_xml(seed))
+            seed_minder(tmp_minder, root_title=plan_md.stem, template=template)
             in_count = 0
-            print(f"import : empty plan, seeded root '{plan_md.stem}'")
+            label = f"template '{template}'" if template else f"root '{plan_md.stem}'"
+            print(f"import : empty plan, seeded {label}")
         try:
             minder_launch_gui(tmp_minder, force)
         except RuntimeError as exc:
@@ -182,15 +194,6 @@ def run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard: 
 # --- mind callbacks ---
 
 
-def _seed_fresh(path: Path, template: str, root_title: str) -> None:
-    """Write a fresh .minder at `path`, seeded from `template` if given."""
-    if template:
-        tree = load_template(template, root_title=root_title)
-        path.write_text(tree_to_minder_xml(tree))
-    else:
-        make_minder_file(path)
-
-
 def cmd_mind_import(
     minder_path: str,
     folder: str = "",
@@ -232,6 +235,7 @@ def cmd_mind_open(
     template: str = "",
 ) -> None:
     refuse_if_minder_running(force)
+    copy_clipboard = not no_clipboard
     if not name:
         # No name: open a fresh timestamped scratch map.
         out_dir = Path(mind_dir).resolve()
@@ -239,8 +243,11 @@ def cmd_mind_open(
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         minder_file = out_dir / f"mm_{ts}.minder"
         print(f"mode   : new ({minder_file} — created fresh)")
-        _seed_fresh(minder_file, template, "Project")
-        run_minder(minder_file, minder_file.with_suffix(".md"), force)
+        try:
+            seed_minder(minder_file, root_title=minder_file.stem, template=template)
+        except TemplateNotFoundError as exc:
+            sys.exit(str(exc))
+        run_minder(minder_file, minder_file.with_suffix(".md"), force, copy_clipboard=copy_clipboard)
         return
     mode, target = resolve_open_target(
         name,
@@ -248,24 +255,29 @@ def cmd_mind_open(
         Path(notes_root).resolve(),
         Path(plans_dir).resolve(),
     )
-    copy_clipboard = not no_clipboard
-    # --template only seeds a brand-new map; warn rather than silently no-op.
-    if template and not (mode == "new" and not target.exists()):
+    use_template = template if template_applies(mode, target) else ""
+    if template and not use_template:
         print("note   : --template ignored (opening existing content)")
     if mode == "legacy":
         print(f"mode   : legacy ({target})")
         md_file = target.with_suffix(".md")
-        run_minder(target, md_file, force)
+        run_minder(target, md_file, force, copy_clipboard=copy_clipboard)
     elif mode == "plan":
-        run_minder_smart_sync_plan(target, copy_clipboard, force)
+        try:
+            run_minder_smart_sync_plan(target, copy_clipboard, force, template=use_template)
+        except TemplateNotFoundError as exc:
+            sys.exit(str(exc))
     elif mode == "new":
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             print(f"mode   : new ({target} — opening existing)")
         else:
             print(f"mode   : new ({target} — created fresh)")
-            _seed_fresh(target, template, target.stem)
+            try:
+                seed_minder(target, root_title=target.stem, template=use_template)
+            except TemplateNotFoundError as exc:
+                sys.exit(str(exc))
         md_file = target.with_suffix(".md")
-        run_minder(target, md_file, force)
+        run_minder(target, md_file, force, copy_clipboard=copy_clipboard)
     else:
         run_minder_smart_sync_folder(target, fs_depth, copy_clipboard, force)

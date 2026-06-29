@@ -7,12 +7,15 @@ guiding prompt). Drop another ``*.md`` file here to add a template — no code
 changes needed.
 """
 
-import sys
 from pathlib import Path
 
-from anno.mind.tree import MindNode, parse_headings_markdown
+from anno.mind.tree import MindNode, parse_headings_markdown, tree_to_minder_xml
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
+class TemplateNotFoundError(FileNotFoundError):
+    """Raised when a template name or path does not resolve to a markdown file."""
 
 
 def available_templates() -> list[str]:
@@ -34,8 +37,21 @@ def load_template(name_or_path: str, root_title: str = "") -> MindNode:
         path = TEMPLATES_DIR / f"{name_or_path}.md"
     if not path.is_file():
         names = ", ".join(available_templates()) or "(none)"
-        sys.exit(f"unknown template: {name_or_path}\navailable: {names}")
+        raise TemplateNotFoundError(f"unknown template: {name_or_path}\navailable: {names}")
     tree = parse_headings_markdown(path.read_text())
     if root_title:
         tree.title = root_title
     return tree
+
+
+def seed_minder(path: Path, *, root_title: str, template: str = "") -> None:
+    """Write a fresh ``.minder`` at ``path``.
+
+    With ``template``, load the bundled (or path) markdown and override the root
+    title. Otherwise seed a single root node titled ``root_title``.
+    """
+    if template:
+        tree = load_template(template, root_title=root_title)
+    else:
+        tree = MindNode(title=root_title)
+    path.write_text(tree_to_minder_xml(tree))

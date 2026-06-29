@@ -1,4 +1,5 @@
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Optional
 from xml.sax.saxutils import escape as xml_escape
@@ -120,6 +121,32 @@ def strip_note_blanks(node: MindNode) -> None:
         strip_note_blanks(c)
 
 
+def _append_note_lines(out: list[str], note: str) -> None:
+    if note:
+        out.append("")
+        out.append(note)
+
+
+def _walk_descendants(
+    root: MindNode,
+    emit: Callable[[MindNode, list[int], int], None],
+) -> None:
+    """Depth-first over descendants of ``root`` (not ``root`` itself).
+
+    ``emit(child, path, depth)`` — ``path`` is 1-based from the map root's
+    children (e.g. ``[1]``, ``[1, 2]``); ``depth`` is 0 for direct children.
+    """
+
+    def descend(parent: MindNode, path_prefix: list[int]) -> None:
+        for i, child in enumerate(parent.children, 1):
+            path = path_prefix + [i]
+            depth = len(path_prefix)
+            emit(child, path, depth)
+            descend(child, path)
+
+    descend(root, [])
+
+
 def tree_to_headings_markdown(root: MindNode, base_level: int = 1) -> str:
     """Render a tree back to heading-style markdown.
 
@@ -127,16 +154,14 @@ def tree_to_headings_markdown(root: MindNode, base_level: int = 1) -> str:
     higher when splicing under a deeper heading)."""
     out: list[str] = []
 
-    def _walk(node: MindNode, level: int) -> None:
+    def walk(node: MindNode, level: int) -> None:
         out.append(f"{'#' * level} {node.title}".rstrip())
-        if node.note:
-            out.append("")
-            out.append(node.note)
+        _append_note_lines(out, node.note)
         for child in node.children:
             out.append("")
-            _walk(child, level + 1)
+            walk(child, level + 1)
 
-    _walk(root, base_level)
+    walk(root, base_level)
     out.append("")
     return "\n".join(out)
 
@@ -144,7 +169,7 @@ def tree_to_headings_markdown(root: MindNode, base_level: int = 1) -> str:
 def tree_to_numbered_markdown(root: MindNode) -> str:
     """Render a tree as a numbered outline.
 
-    The outline numbers (1., 1.1, 1.1.1, ...) make the hierarchy explicit in the
+    The outline numbers (1., 1.1., 1.1.1., ...) make the hierarchy explicit in the
     text so it survives aggressive whitespace stripping / flattening by some
     CLI agents and paste targets.
 
@@ -153,32 +178,21 @@ def tree_to_numbered_markdown(root: MindNode) -> str:
     """
     out: list[str] = []
 
-    def _walk(node: MindNode, numbers: list[int], depth: int) -> None:
-        if numbers:
-            num_str = ".".join(str(n) for n in numbers)
-            indent = "   " * depth
-            # Top level gets "1. Title"; deeper use "1.1 Title" (cleaner, still unambiguous)
-            label = f"{num_str}. " if len(numbers) == 1 else f"{num_str} "
-            out.append(f"{indent}{label}{node.title}")
-            if node.note:
-                note_indent = "   " * (depth + 1)
-                for line in node.note.splitlines():
-                    out.append(f"{note_indent}{line}")
-        for i, child in enumerate(node.children, 1):
-            _walk(child, numbers + [i], depth + 1)
+    def emit_numbered(node: MindNode, path: list[int], depth: int) -> None:
+        num_str = ".".join(str(n) for n in path)
+        indent = "   " * depth
+        out.append(f"{indent}{num_str}. {node.title}")
+        if node.note:
+            note_indent = "   " * (depth + 1)
+            for line in node.note.splitlines():
+                out.append(f"{note_indent}{line}")
 
-    # Emit a top-level heading for the root title (skip synthetic "root")
     if root.title and root.title != "root":
         out.append(f"# {root.title}")
-        if root.note:
-            out.append("")
-            out.append(root.note)
+        _append_note_lines(out, root.note)
         out.append("")
 
-    # Number the direct children of the root at depth 0
-    for i, child in enumerate(root.children, 1):
-        _walk(child, [i], 0)
-
+    _walk_descendants(root, emit_numbered)
     out.append("")
     return "\n".join(out)
 
