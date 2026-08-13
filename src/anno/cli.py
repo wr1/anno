@@ -6,6 +6,7 @@ from anno.cam import cmd_cam
 from anno.constants import (
     DEFAULT_FS_DEPTH,
     DEFAULT_LOG_FILE,
+    DEFAULT_MERMAID_DIR,
     DEFAULT_MIND_DIR,
     DEFAULT_NOTES_DIR,
     DEFAULT_NOTES_ROOT,
@@ -15,6 +16,12 @@ from anno.constants import (
 )
 from anno.ink import cmd_ink_fig, cmd_ink_open, cmd_ink_screen
 from anno.listing import cmd_list
+from anno.mermaid import (
+    cmd_mermaid_class,
+    cmd_mermaid_flowchart,
+    cmd_mermaid_sequence,
+    cmd_mermaid_state,
+)
 from anno.mind.sync import cmd_mind_import, cmd_mind_open
 from anno.para_launch import cmd_para_new, cmd_para_open
 
@@ -22,7 +29,8 @@ app = cli(
     name="anno",
     help=(
         "CLI for annotating figures in Inkscape, building mind maps in Minder, "
-        "capturing from webcam, and annotating 3D meshes in ParaView."
+        "drawing mermaid graphs in markdown, capturing from webcam, "
+        "and annotating 3D meshes in ParaView."
     ),
     line_connect=True,
     show_types=False,
@@ -102,6 +110,14 @@ _template_option = option(
     default="",
     help="Seed a fresh map from a template (e.g. 'software'). Ignored when opening existing content.",
     sort_key=16,
+)
+_mermaid_notes_option = option(
+    flags=["--notes-dir", "-d"],
+    dest="notes_dir",
+    arg_type=str,
+    default=str(DEFAULT_MERMAID_DIR),
+    help="Directory to save mermaid markdown",
+    sort_key=10,
 )
 _para_notes_option = option(
     flags=["--notes-dir", "-d"],
@@ -199,6 +215,32 @@ mind_group.commands.append(
     )
 )
 app.subgroups.append(mind_group)
+
+mermaid_group = group(
+    name="mermaid",
+    help=(
+        "Mermaid graphs in markdown (flowchart default). Minder stays for mind maps. "
+        "A name that matches a style (e.g. sequence) needs the explicit style "
+        "subcommand: anno mermaid flowchart sequence. Graphviz dot/neato later."
+    ),
+    default="flowchart",
+)
+for _style, _cb, _help in (
+    ("flowchart", cmd_mermaid_flowchart, "Find-or-create a mermaid flowchart .md and open it in an editor."),
+    ("sequence", cmd_mermaid_sequence, "Find-or-create a mermaid sequence diagram .md and open it in an editor."),
+    ("state", cmd_mermaid_state, "Find-or-create a mermaid state diagram .md and open it in an editor."),
+    ("class", cmd_mermaid_class, "Find-or-create a mermaid class diagram .md and open it in an editor."),
+):
+    mermaid_group.commands.append(
+        command(
+            name=_style,
+            help=_help,
+            callback=_cb,
+            arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
+            options=[_mermaid_notes_option],
+        )
+    )
+app.subgroups.append(mermaid_group)
 
 app.commands.append(
     command(

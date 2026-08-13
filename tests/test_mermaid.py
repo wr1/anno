@@ -8,6 +8,7 @@ from anno.mermaid import (
     ensure_mermaid_file,
     mermaid_path,
     mermaid_template,
+    open_mermaid,
 )
 
 
@@ -74,3 +75,39 @@ def test_editor_falls_back_to_gvim(monkeypatch):
     monkeypatch.delenv("EDITOR", raising=False)
     monkeypatch.setattr("anno.mermaid.shutil.which", lambda name: "/usr/bin/gvim" if name == "gvim" else None)
     assert editor_argv(Path("x.md")) == ["gvim", "--nofork", "x.md"]
+
+
+def test_open_mermaid_creates_edits_and_copies(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("VISUAL", "hx")
+    launched = []
+    copied = []
+
+    def fake_editor(argv):
+        launched.append(argv)
+        Path(argv[-1]).write_text("# edited\n\n```mermaid\nflowchart TD\n  a --> b\n```\n")
+
+    path = open_mermaid(
+        "flowchart",
+        "pipeline",
+        notes_dir=str(tmp_path),
+        run_editor=fake_editor,
+        copy_text=copied.append,
+    )
+    assert path == tmp_path / "pipeline.md"
+    assert launched[0][-1] == str(path)
+    assert copied == [path.read_text()]
+    assert "```mermaid" in path.read_text()
+
+
+def test_open_mermaid_does_not_overwrite_existing(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("VISUAL", "hx")
+    existing = tmp_path / "pipeline.md"
+    existing.write_text("# keep me\n")
+    open_mermaid(
+        "sequence",
+        "pipeline",
+        notes_dir=str(tmp_path),
+        run_editor=lambda argv: None,
+        copy_text=lambda text: None,
+    )
+    assert existing.read_text() == "# keep me\n"

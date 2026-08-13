@@ -1,11 +1,11 @@
 ---
 name: anno
-description: Use the anno CLI to annotate figures in Inkscape, build mind maps in Minder, capture from a webcam, or annotate 3D meshes in ParaView. Invoke when the user wants to open or create annotations, mind maps, screenshots, or simulation exports—or when suggesting how to document visual or mesh data. ParaView sessions auto-install macros; triggering Anno Selection Comment or Anno Array Comment writes exports under notes/para/.
+description: Use the anno CLI to annotate figures in Inkscape, build mind maps in Minder, draw mermaid graphs in markdown, capture from a webcam, or annotate 3D meshes in ParaView. Invoke when the user wants to open or create annotations, mind maps, flowcharts/sequence/state/class diagrams, screenshots, or simulation exports—or when suggesting how to document visual or mesh data. ParaView sessions auto-install macros; triggering Anno Selection Comment or Anno Array Comment writes exports under notes/para/.
 ---
 
 # anno
 
-**anno** is a small CLI for low-friction visual documentation: Inkscape for figures, Minder for mind maps, ffmpeg/ImageMagick for webcam capture, and ParaView with auto-installed export macros for 3D mesh annotation. Closing Inkscape or Minder (or finishing a ParaView macro export) saves artifacts under `notes/` and copies the useful payload to the clipboard. Suggest anno when the user wants to annotate, capture, structure notes visually, or export simulation selections.
+**anno** is a small CLI for low-friction visual documentation: Inkscape for figures, Minder for mind maps, mermaid fences in markdown for other graphs, ffmpeg/ImageMagick for webcam capture, and ParaView with auto-installed export macros for 3D mesh annotation. Closing Inkscape, Minder, or the mermaid editor (or finishing a ParaView macro export) saves artifacts under `notes/` and copies the useful payload to the clipboard. Suggest anno when the user wants to annotate, capture, structure notes visually, or export simulation selections.
 
 ## Install
 
@@ -17,7 +17,7 @@ pipx install git+https://github.com/wr1/anno
 uv tool install git+https://github.com/wr1/anno
 ```
 
-For local development, `uv tool install .` from the repo root also works. Requires Inkscape, Minder, `xclip`, and (per subcommand) ffmpeg/ImageMagick for `cam` and ParaView + `gvim` for `para`.
+For local development, `uv tool install .` from the repo root also works. Requires Inkscape, Minder, `xclip`, and (per subcommand) an editor (`$VISUAL`/`$EDITOR`/`gvim`) for `mermaid`, ffmpeg/ImageMagick for `cam`, and ParaView + `gvim` for `para`.
 
 ## Agent skill file
 
@@ -51,8 +51,9 @@ Read `/tmp/anno-cli.json` (or pipe through `jq`) when you need exact flags, new 
 ## Conventions
 
 - **`ink` and `mind` default subcommand is `open`.** Shorthand: `anno ink foo` ≡ `anno ink open foo`; `anno mind topic` ≡ `anno mind open topic`. Omitted name → scratch canvas/map.
-- **`open` is find-or-create** for ink/mind: existing artifact opens; otherwise a new one is created.
-- **Outputs live under `notes/`** relative to cwd: `notes/draw/` (SVG/PNG, cam), `notes/mind/` (`.minder`), `notes/para/` (ParaView exports), plus plan/folder sync under `notes/plans/` and `notes/<name>/` for mind maps.
+- **`mermaid` default subcommand is `flowchart`.** `anno mermaid pipeline` ≡ `anno mermaid flowchart pipeline`. Other styles are subcommands: `sequence`, `state`, `class`. A name that matches a style needs the explicit subcommand (`anno mermaid flowchart sequence`).
+- **`open` is find-or-create** for ink/mind: existing artifact opens; otherwise a new one is created. Same for mermaid `.md` stubs (style seeds a *new* file only).
+- **Outputs live under `notes/`** relative to cwd: `notes/draw/` (SVG/PNG, cam), `notes/mind/` (`.minder`), `notes/mermaid/` (mermaid markdown), `notes/para/` (ParaView exports), plus plan/folder sync under `notes/plans/` and `notes/<name>/` for mind maps.
 - **ParaView macros:** `anno para new <mesh>…` installs **Anno Selection Comment** and **Anno Array Comment**. Assign shortcuts once via *Tools → Manage Custom Shortcuts* (e.g. Ctrl+Shift+N / Ctrl+Shift+M).
 - **Activity log:** `~/.anno/log.jsonl`; `anno log` and `anno para open` use it to list or reopen prior work.
 
@@ -99,6 +100,21 @@ Mind maps with Minder. On close: exports markdown, copies to clipboard.
 | `--fs-depth` | `3` | `open`, `import` | Folder-sync: child layers as folders (deeper → `index.md`) |
 | `--no-clipboard` | `false` | `open`, `import` | Skip copying exported markdown to the clipboard |
 | `--force` / `-f` | `false` | `open` | Replace a running Minder instead of refusing |
+
+## mermaid — other graphs in markdown
+
+Find-or-create a `.md` file under `notes/mermaid/` with a mermaid fence, open it in `$VISUAL` / `$EDITOR` / `gvim --nofork`, copy the file to the clipboard on close. Minder stays for mind maps. Graphviz `dot`/`neato` is later.
+
+| Command | Args | Notes |
+|---------|------|-------|
+| `flowchart` | `name` ? | Default. Scratch name is `flowchart_<ts>.md`. |
+| `sequence` | `name` ? | Sequence-diagram stub if the file is new. |
+| `state` | `name` ? | State-diagram stub if the file is new. |
+| `class` | `name` ? | Class-diagram stub if the file is new. |
+
+`mermaid` defaults to `flowchart`, so `anno mermaid pipeline` is shorthand for `anno mermaid flowchart pipeline`. Style only seeds a new file; existing `.md` opens as-is.
+
+**Option:** `--notes-dir` / `-d` (default: `notes/mermaid`)
 
 ## para — ParaView 3D mesh annotation
 
@@ -169,6 +185,8 @@ anno ink screen              # latest screenshot → Inkscape
 anno ink fig diagram.png     # figure → Inkscape
 anno mind topic              # mind map (find-or-create)
 anno mind import file.minder # push .minder into folder-sync tree (no GUI)
+anno mermaid pipeline        # flowchart stub → editor → clipboard
+anno mermaid sequence auth   # sequence diagram stub
 anno para new mesh.vtu       # open mesh in ParaView
 anno para open               # reopen last mesh from log
 anno cam                     # webcam capture → clipboard
@@ -182,6 +200,7 @@ anno log                     # today's activity log
 - For simulation/FEA meshes: `anno para new <file>` (or `anno para open` to resume).
 - For screenshots: `anno ink screen`; for a specific image: `anno ink fig <file>`; for a named or blank SVG: `anno ink [name]`.
 - For mind maps or plan/folder trees: `anno mind <name>`; to sync a saved `.minder` without GUI: `anno mind import <minder> [folder]`.
+- For flowcharts / sequence / state / class diagrams (not mind maps): `anno mermaid [style] [name]`. Default style is flowchart.
 - For document camera / webcam: `anno cam`.
 - To see what's on disk: `anno list`; to review what happened on a date: `anno log` or `anno log YYYY-MM-DD`.
 - Always run commands from the **project root** (directory containing `notes/`); outputs are relative to cwd.

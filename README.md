@@ -57,6 +57,21 @@ To sync a `.minder` file into a folder of markdown notes without opening the GUI
 anno mind import backup.minder
 ```
 
+## Mermaid — flowcharts and other graphs
+
+```sh
+anno mermaid                 # scratch flowchart
+anno mermaid pipeline        # find-or-create notes/mermaid/pipeline.md
+anno mermaid flowchart api   # same, explicit style
+anno mermaid sequence auth
+anno mermaid state door
+anno mermaid class model
+```
+
+Find-or-create a markdown file with a mermaid fence, open it in `$VISUAL` / `$EDITOR` / `gvim`, copy the file to the clipboard on close. Style only seeds a *new* file. A name that matches a style (e.g. `sequence`) needs the explicit subcommand: `anno mermaid flowchart sequence`.
+
+Mind maps stay in Minder. Graphviz `dot`/`neato` is later.
+
 ## ParaView — 3D meshes
 
 ```sh
@@ -90,6 +105,7 @@ anno log 2026-04-10          # activity on a given date
 | Mind maps | [Minder](https://github.com/phase1geo/Minder) (`com.github.phase1geo.minder`) |
 | Clipboard (Linux) | `xclip` |
 | Webcam | `ffmpeg`, `ffplay`, ImageMagick `convert` |
+| Mermaid | `$VISUAL` or `$EDITOR`, or `gvim` |
 | ParaView | `paraview`, `gvim` (optional `zenity` for dialog prompts) |
 
 ## Options
@@ -103,3 +119,7 @@ uv sync
 uv run pre-commit install
 uv run pytest
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
