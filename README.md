@@ -68,7 +68,7 @@ anno mermaid state door
 anno mermaid class model
 ```
 
-Find-or-create a markdown file with a mermaid fence, open it in `$VISUAL` / `$EDITOR` / `gvim`, copy the file to the clipboard on close. Style only seeds a *new* file. A name that matches a style (e.g. `sequence`) needs the explicit subcommand: `anno mermaid flowchart sequence`.
+Find-or-create a markdown file with a mermaid fence, open a local mermaid.js preview in the browser. The command returns immediately. The preview **keeps running until you click Done** and rerenders when the file changes. Dump notes in the fence — they become `%%` comments and the graph still draws. The sidecar **refuses to save empty over a non-empty file**. `Failed to fetch` means the process died; Reconnect or run `anno mermaid <name>` again — the buffer is not discarded. Connect **nodes**, not subgraphs; put filenames on **edges**. Agent contract: `docs/mermaid.md`. Falls back to `$VISUAL` / `$EDITOR` / `gvim` / `code` if no browser is available. Style only seeds a *new* file. A name that matches a style (e.g. `sequence`) needs the explicit subcommand: `anno mermaid flowchart sequence`.
 
 Mind maps stay in Minder. Graphviz `dot`/`neato` is later.
 
@@ -92,7 +92,7 @@ Assign shortcuts once: *Tools → Customize Shortcuts* (e.g. Ctrl+Shift+N for se
 ## Browse and review
 
 ```sh
-anno list                    # saved SVGs and mind maps
+anno list                    # saved SVGs, mind maps, and mermaid graphs
 anno log                     # what you opened today
 anno log 2026-04-10          # activity on a given date
 ```
@@ -105,7 +105,7 @@ anno log 2026-04-10          # activity on a given date
 | Mind maps | [Minder](https://github.com/phase1geo/Minder) (`com.github.phase1geo.minder`) |
 | Clipboard (Linux) | `xclip` |
 | Webcam | `ffmpeg`, `ffplay`, ImageMagick `convert` |
-| Mermaid | `$VISUAL` or `$EDITOR`, or `gvim` |
+| Mermaid | browser + mermaid.js CDN; else `$VISUAL` / `$EDITOR` / `gvim` / `code` |
 | ParaView | `paraview`, `gvim` (optional `zenity` for dialog prompts) |
 
 ## Options

@@ -17,7 +17,7 @@ pipx install git+https://github.com/wr1/anno
 uv tool install git+https://github.com/wr1/anno
 ```
 
-For local development, `uv tool install .` from the repo root also works. Requires Inkscape, Minder, `xclip`, and (per subcommand) an editor (`$VISUAL`/`$EDITOR`/`gvim`) for `mermaid`, ffmpeg/ImageMagick for `cam`, and ParaView + `gvim` for `para`.
+For local development, `uv tool install .` from the repo root also works. Requires Inkscape, Minder, `xclip`, and (per subcommand) a browser for `mermaid` (falls back to `$VISUAL`/`$EDITOR`/`gvim`/`code`), ffmpeg/ImageMagick for `cam`, and ParaView + `gvim` for `para`.
 
 ## Agent skill file
 
@@ -103,16 +103,24 @@ Mind maps with Minder. On close: exports markdown, copies to clipboard.
 
 ## mermaid — other graphs in markdown
 
-Find-or-create a `.md` file under `notes/mermaid/` with a mermaid fence, open it in `$VISUAL` / `$EDITOR` / `gvim --nofork`, copy the file to the clipboard on close. Minder stays for mind maps. Graphviz `dot`/`neato` is later.
+Find-or-create `notes/mermaid/<name>.md` with a mermaid fence, open it in an editor, copy the file to the clipboard on close. Use this for flowcharts, sequence, state, and class diagrams. **Mind maps stay in `anno mind` (Minder).** Graphviz `dot`/`neato` is later.
 
 | Command | Args | Notes |
 |---------|------|-------|
-| `flowchart` | `name` ? | Default. Scratch name is `flowchart_<ts>.md`. |
+| `flowchart` | `name` ? | Default. New stub is `flowchart LR`: inputs → group → group2 → outputs. Each group has `data` and `algo` as mermaid `diff` shapes. |
 | `sequence` | `name` ? | Sequence-diagram stub if the file is new. |
 | `state` | `name` ? | State-diagram stub if the file is new. |
 | `class` | `name` ? | Class-diagram stub if the file is new. |
 
-`mermaid` defaults to `flowchart`, so `anno mermaid pipeline` is shorthand for `anno mermaid flowchart pipeline`. Style only seeds a new file; existing `.md` opens as-is.
+`mermaid` defaults to `flowchart`, so `anno mermaid pipeline` ≡ `anno mermaid flowchart pipeline`. A name that matches a style needs the explicit subcommand: `anno mermaid flowchart sequence`.
+
+**Find-or-create:** named file is `<stem>.md` (style is not in the filename). Style only seeds a *new* file; an existing `.md` opens as-is. No name → scratch `<style>_YYYYMMDD_HHMMSS.md`.
+
+**Editor:** local mermaid.js sidecar (not VS Code). `anno mermaid` returns immediately. The preview **stays up until Done**; disk writes rerender via SSE. Do not reopen and do not schedule a watch/reload loop unless the user asks. Save stashes in `localStorage` (file key, not port) and retries. **Never overwrite a non-empty `.md` with empty** (409). An empty textarea is not “local edits” — restore from disk. `Failed to fetch` = sidecar gone; text is still in the browser — **Reconnect** or `anno mermaid <name>` and reload. Same file prefers the same port. CDN mermaid.js on first load. Fallback: `$VISUAL`, `$EDITOR`, `gvim --nofork`, then `code --wait`.
+
+**Dump however it comes out.** Notes and questions in the fence are fine; `anno.mermaid_dump` softens them to `%%` and still draws. Do not require valid mermaid. Connect **node ids**, not subgraphs (`subgraph sg_pkg [pkg]`; never `sg_*` on `-->`). Put **files on edge labels**, not extra nodes (including gx `K S M` — those are not amber viz). Skip `inputs`/`algos`/`outputs` column boxes. Full contract: [docs/mermaid.md](docs/mermaid.md).
+
+**Pipeline co-work:** after `anno mermaid pipeline` (or opening `notes/mermaid/pipeline.md`), **loop to implement notes**, not to ping `/content`. Default **1m**. Each fire: read the `.md` once; if there are new `where X?` / `add Y` / stray fence lines, implement them (node-to-node edges, files on labels) and write the file; if none, report `EDITS none` and stop that fire. **User corrections beat leftover notes** — if the user said “gx results not viz”, do not re-add `gx_results` from an old `add gx outputs` line; delete that line. Never save empty. Never treat HTTP 200 as “the graph is done.” Keep the sidecar up; do not reopen unless it is down. Stop the loop when the user says stop or the file is gone.
 
 **Option:** `--notes-dir` / `-d` (default: `notes/mermaid`)
 
@@ -150,12 +158,15 @@ anno cam
 
 **Option:** `--notes-dir` / `-d` (default: `notes/draw`)
 
-## list — list saved SVGs and mind maps
+## list — list saved SVGs, mind maps, and mermaid graphs
+
+One table, newest first. Each row has an opener (`ink myfigure`, `mind roadmap`, `mermaid pipeline`) color-coded by type.
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--notes-dir` | `-d` | `notes/draw` | Directory for SVGs |
 | `--mind-dir` | `-m` | `notes/mind` | Directory for legacy `.minder` files |
+| `--mermaid-dir` | — | `notes/mermaid` | Directory for mermaid markdown |
 
 ```sh
 anno list
@@ -185,12 +196,12 @@ anno ink screen              # latest screenshot → Inkscape
 anno ink fig diagram.png     # figure → Inkscape
 anno mind topic              # mind map (find-or-create)
 anno mind import file.minder # push .minder into folder-sync tree (no GUI)
-anno mermaid pipeline        # flowchart stub → editor → clipboard
+anno mermaid pipeline        # open sidecar + 1m co-work implement loop
 anno mermaid sequence auth   # sequence diagram stub
 anno para new mesh.vtu       # open mesh in ParaView
 anno para open               # reopen last mesh from log
 anno cam                     # webcam capture → clipboard
-anno list                    # list saved SVGs and mind maps
+anno list                    # list saved SVGs, mind maps, and mermaid graphs
 anno log                     # today's activity log
 ```
 
@@ -200,11 +211,11 @@ anno log                     # today's activity log
 - For simulation/FEA meshes: `anno para new <file>` (or `anno para open` to resume).
 - For screenshots: `anno ink screen`; for a specific image: `anno ink fig <file>`; for a named or blank SVG: `anno ink [name]`.
 - For mind maps or plan/folder trees: `anno mind <name>`; to sync a saved `.minder` without GUI: `anno mind import <minder> [folder]`.
-- For flowcharts / sequence / state / class diagrams (not mind maps): `anno mermaid [style] [name]`. Default style is flowchart.
+- For flowcharts / sequence / state / class diagrams (not mind maps): `anno mermaid [style] [name]` from the project root. For **`pipeline`**, start the 1m co-work implement loop (mermaid section). Dump as-is; sidecar stays up. [docs/mermaid.md](docs/mermaid.md).
 - For document camera / webcam: `anno cam`.
 - To see what's on disk: `anno list`; to review what happened on a date: `anno log` or `anno log YYYY-MM-DD`.
 - Always run commands from the **project root** (directory containing `notes/`); outputs are relative to cwd.
-- After Inkscape/Minder/ParaView close, exported content is usually already on the clipboard — remind the user to switch to the target app and paste.
+- After Inkscape/Minder/mermaid-editor/ParaView close, exported content is usually already on the clipboard — remind the user to switch to the target app and paste.
 
 ## Maintaining this skill
 

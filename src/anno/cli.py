@@ -111,6 +111,14 @@ _template_option = option(
     help="Seed a fresh map from a template (e.g. 'software'). Ignored when opening existing content.",
     sort_key=16,
 )
+_list_mermaid_dir_option = option(
+    flags=["--mermaid-dir"],
+    dest="mermaid_dir",
+    arg_type=str,
+    default=str(DEFAULT_MERMAID_DIR),
+    help="Directory for mermaid markdown",
+    sort_key=12,
+)
 _mermaid_notes_option = option(
     flags=["--notes-dir", "-d"],
     dest="notes_dir",
@@ -218,11 +226,7 @@ app.subgroups.append(mind_group)
 
 mermaid_group = group(
     name="mermaid",
-    help=(
-        "Mermaid graphs in markdown (flowchart default). Minder stays for mind maps. "
-        "A name that matches a style (e.g. sequence) needs the explicit style "
-        "subcommand: anno mermaid flowchart sequence. Graphviz dot/neato later."
-    ),
+    help="Mermaid graphs in markdown. On close: copies .md to clipboard.",
     default="flowchart",
 )
 for _style, _cb, _help in (
@@ -281,9 +285,9 @@ app.subgroups.append(para_group)
 app.commands.append(
     command(
         name="list",
-        help="List saved annotations and mind maps.",
+        help="List saved annotations, mind maps, and mermaid graphs.",
         callback=cmd_list,
-        options=[_notes_option, _mind_dir_option],
+        options=[_notes_option, _mind_dir_option, _list_mermaid_dir_option],
     )
 )
 
