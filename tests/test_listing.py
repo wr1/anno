@@ -29,6 +29,7 @@ def test_open_invocation_is_sub_and_stem():
     assert open_invocation("ink", Path("notes/draw/myfigure.svg")) == "ink myfigure"
     assert open_invocation("mind", Path("roadmap.minder")) == "mind roadmap"
     assert open_invocation("mermaid", Path("notes/mermaid/pipeline.md")) == "mermaid pipeline"
+    assert open_invocation("d2", Path("notes/d2/pipeline.d2")) == "d2 pipeline"
 
 
 def test_collect_entries_sorted_by_mtime_mixed_types(tmp_path: Path):
@@ -37,20 +38,24 @@ def test_collect_entries_sorted_by_mtime_mixed_types(tmp_path: Path):
     draw = tmp_path / "draw"
     mind = tmp_path / "mind"
     mer = tmp_path / "mermaid"
-    for d in (draw, mind, mer):
+    d2 = tmp_path / "d2"
+    for d in (draw, mind, mer, d2):
         d.mkdir()
     ink = draw / "fig.svg"
     minder = mind / "map.minder"
     md = mer / "pipe.md"
+    diagram = d2 / "flow.d2"
     ink.write_text("<svg/>")
     minder.write_text("x")
     md.write_text("# p\n")
+    diagram.write_text("a -> b\n")
     os.utime(minder, (1_000_000, 1_000_000))
     os.utime(md, (2_000_000, 2_000_000))
     os.utime(ink, (3_000_000, 3_000_000))
-    entries = collect_entries(str(draw), str(mind), str(mer))
-    assert [e.sub for e in entries] == ["ink", "mermaid", "mind"]
-    assert [e.open_cmd for e in entries] == ["ink fig", "mermaid pipe", "mind map"]
+    os.utime(diagram, (4_000_000, 4_000_000))
+    entries = collect_entries(str(draw), str(mind), str(mer), str(d2))
+    assert [e.sub for e in entries] == ["d2", "ink", "mermaid", "mind"]
+    assert [e.open_cmd for e in entries] == ["d2 flow", "ink fig", "mermaid pipe", "mind map"]
 
 
 def test_type_style_differs_by_sub():
@@ -59,3 +64,5 @@ def test_type_style_differs_by_sub():
     assert type_style("ink") != type_style("mind")
     assert type_style("mind") != type_style("mermaid")
     assert type_style("ink") != type_style("mermaid")
+    assert type_style("d2") != type_style("mermaid")
+    assert type_style("d2") != type_style("ink")

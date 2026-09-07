@@ -2,13 +2,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from anno.constants import DEFAULT_MERMAID_DIR, DEFAULT_MIND_DIR, DEFAULT_NOTES_DIR
+from anno.constants import DEFAULT_D2_DIR, DEFAULT_MERMAID_DIR, DEFAULT_MIND_DIR, DEFAULT_NOTES_DIR
 
-# Distinct hues so ink / mind / mermaid scan as separate types.
+# Distinct hues so ink / mind / mermaid / d2 scan as separate types.
 _TYPE_STYLE = {
     "ink": "rgb(165,214,255)",
     "mind": "rgb(210,168,255)",
     "mermaid": "rgb(126,231,135)",
+    "d2": "rgb(255,166,87)",
 }
 
 
@@ -37,12 +38,18 @@ class ListEntry:
         return open_invocation(self.sub, self.path)
 
 
-def collect_entries(notes_dir: str, mind_dir: str, mermaid_dir: str) -> list[ListEntry]:
+def collect_entries(
+    notes_dir: str,
+    mind_dir: str,
+    mermaid_dir: str,
+    d2_dir: str = str(DEFAULT_D2_DIR),
+) -> list[ListEntry]:
     entries: list[ListEntry] = []
     for sub, directory, pattern in (
         ("ink", notes_dir, "*.svg"),
         ("mind", mind_dir, "*.minder"),
         ("mermaid", mermaid_dir, "*.md"),
+        ("d2", d2_dir, "*.d2"),
     ):
         for path in listed_files(Path(directory), pattern):
             entries.append(ListEntry(sub, path, path.stat().st_mtime))
@@ -54,11 +61,12 @@ def cmd_list(
     notes_dir: str = str(DEFAULT_NOTES_DIR),
     mind_dir: str = str(DEFAULT_MIND_DIR),
     mermaid_dir: str = str(DEFAULT_MERMAID_DIR),
+    d2_dir: str = str(DEFAULT_D2_DIR),
 ) -> None:
     from rich.console import Console
     from rich.table import Table
 
-    entries = collect_entries(notes_dir, mind_dir, mermaid_dir)
+    entries = collect_entries(notes_dir, mind_dir, mermaid_dir, d2_dir)
     if not entries:
         print("No annotations found.")
         return

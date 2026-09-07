@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Annotate figures, sketch mind maps, shoot from a webcam, and mark up 3D simulation meshes — then paste the result wherever you need it. anno keeps the steps short: open a tool, work visually, close the window, paste from the clipboard.
+Annotate figures, sketch mind maps, draw mermaid or D2 graphs, shoot from a webcam, and mark up 3D simulation meshes — then paste the result wherever you need it. anno keeps the steps short: open a tool, work visually, close the window, paste from the clipboard.
 
 <img src="help.svg" alt="anno command overview">
 
@@ -72,6 +72,16 @@ Find-or-create a markdown file with a mermaid fence, open a local mermaid.js pre
 
 Mind maps stay in Minder. Graphviz `dot`/`neato` is later.
 
+## D2 — diagrams
+
+```sh
+anno d2                      # compile-check, then scratch preview
+anno d2 pipeline             # find-or-create + compile-check + preview
+anno d2 check pipeline       # full d2 compile (preview soften; --strict = raw)
+```
+
+Find-or-create a `.d2` file and open a local D2 WASM preview in the browser. The command returns immediately. The preview **keeps running until you click Done** and rerenders when the file changes. Dump notes in the file — they become `#` comments and the graph still draws. The sidecar **refuses to save empty over a non-empty file**. `Failed to fetch` means the process died; Reconnect or run `anno d2 <name>` again — the buffer is not discarded. Connect **nodes**; put filenames on **edges**. Agent contract: `docs/d2.md`. Falls back to `$VISUAL` / `$EDITOR` / `gvim` / `code` if no browser is available.
+
 ## ParaView — 3D meshes
 
 ```sh
@@ -92,7 +102,7 @@ Assign shortcuts once: *Tools → Customize Shortcuts* (e.g. Ctrl+Shift+N for se
 ## Browse and review
 
 ```sh
-anno list                    # saved SVGs, mind maps, and mermaid graphs
+anno list                    # saved SVGs, mind maps, mermaid graphs, and D2 diagrams
 anno log                     # what you opened today
 anno log 2026-04-10          # activity on a given date
 ```
@@ -106,6 +116,7 @@ anno log 2026-04-10          # activity on a given date
 | Clipboard (Linux) | `xclip` |
 | Webcam | `ffmpeg`, `ffplay`, ImageMagick `convert` |
 | Mermaid | browser + mermaid.js CDN; else `$VISUAL` / `$EDITOR` / `gvim` / `code` |
+| D2 | browser + `@terrastruct/d2` WASM CDN; else `$VISUAL` / `$EDITOR` / `gvim` / `code` |
 | ParaView | `paraview`, `gvim` (optional `zenity` for dialog prompts) |
 
 ## Options

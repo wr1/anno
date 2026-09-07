@@ -5,6 +5,7 @@ DEFAULT_NOTES_DIR = Path("notes") / "draw"
 DEFAULT_SCREENSHOTS_DIR = Path.home() / "Pictures" / "Screenshots"
 DEFAULT_MIND_DIR = Path("notes") / "mind"
 DEFAULT_MERMAID_DIR = Path("notes") / "mermaid"
+DEFAULT_D2_DIR = Path("notes") / "d2"
 DEFAULT_LOG_FILE = Path.home() / ".anno" / "log.jsonl"
 DEFAULT_PARA_NOTES_DIR = Path("notes") / "para"
 DEFAULT_NOTES_ROOT = Path("notes")

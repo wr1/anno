@@ -4,6 +4,7 @@ from treeparse.utils.color_config import color_theme
 from anno.activity_log import cmd_log
 from anno.cam import cmd_cam
 from anno.constants import (
+    DEFAULT_D2_DIR,
     DEFAULT_FS_DEPTH,
     DEFAULT_LOG_FILE,
     DEFAULT_MERMAID_DIR,
@@ -14,6 +15,7 @@ from anno.constants import (
     DEFAULT_PLANS_DIR,
     DEFAULT_SCREENSHOTS_DIR,
 )
+from anno.d2 import cmd_d2_check, cmd_d2_open
 from anno.ink import cmd_ink_fig, cmd_ink_open, cmd_ink_screen
 from anno.listing import cmd_list
 from anno.mermaid import (
@@ -29,7 +31,7 @@ app = cli(
     name="anno",
     help=(
         "CLI for annotating figures in Inkscape, building mind maps in Minder, "
-        "drawing mermaid graphs in markdown, capturing from webcam, "
+        "drawing mermaid or D2 graphs, capturing from webcam, "
         "and annotating 3D meshes in ParaView."
     ),
     line_connect=True,
@@ -118,6 +120,22 @@ _list_mermaid_dir_option = option(
     default=str(DEFAULT_MERMAID_DIR),
     help="Directory for mermaid markdown",
     sort_key=12,
+)
+_list_d2_dir_option = option(
+    flags=["--d2-dir"],
+    dest="d2_dir",
+    arg_type=str,
+    default=str(DEFAULT_D2_DIR),
+    help="Directory for D2 diagrams",
+    sort_key=13,
+)
+_d2_notes_option = option(
+    flags=["--notes-dir", "-d"],
+    dest="notes_dir",
+    arg_type=str,
+    default=str(DEFAULT_D2_DIR),
+    help="Directory to save D2 diagrams",
+    sort_key=10,
 )
 _mermaid_notes_option = option(
     flags=["--notes-dir", "-d"],
@@ -246,6 +264,59 @@ for _style, _cb, _help in (
     )
 app.subgroups.append(mermaid_group)
 
+d2_group = group(
+    name="d2",
+    help="D2 diagrams. Find-or-create a .d2 file and open a live preview.",
+    default="open",
+)
+d2_group.commands.append(
+    command(
+        name="open",
+        help="Find-or-create a .d2 diagram, compile-check it, then open the live preview.",
+        callback=cmd_d2_open,
+        arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
+        options=[
+            _d2_notes_option,
+            option(
+                flags=["--force", "-f"],
+                dest="force",
+                arg_type=bool,
+                default=False,
+                help="Open the preview even if compile-check fails",
+                sort_key=11,
+            ),
+            option(
+                flags=["--no-check"],
+                dest="no_check",
+                arg_type=bool,
+                default=False,
+                help="Skip the compile-check before launch",
+                sort_key=12,
+            ),
+        ],
+    )
+)
+d2_group.commands.append(
+    command(
+        name="check",
+        help="Full-compile a .d2 file (d2 → SVG). Catches markdown errors validate misses.",
+        callback=cmd_d2_check,
+        arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
+        options=[
+            _d2_notes_option,
+            option(
+                flags=["--strict"],
+                dest="strict",
+                arg_type=bool,
+                default=False,
+                help="Validate the raw file without softening notes to # comments",
+                sort_key=11,
+            ),
+        ],
+    )
+)
+app.subgroups.append(d2_group)
+
 app.commands.append(
     command(
         name="cam",
@@ -285,9 +356,9 @@ app.subgroups.append(para_group)
 app.commands.append(
     command(
         name="list",
-        help="List saved annotations, mind maps, and mermaid graphs.",
+        help="List saved annotations, mind maps, mermaid graphs, and D2 diagrams.",
         callback=cmd_list,
-        options=[_notes_option, _mind_dir_option, _list_mermaid_dir_option],
+        options=[_notes_option, _mind_dir_option, _list_mermaid_dir_option, _list_d2_dir_option],
     )
 )
 

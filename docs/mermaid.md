@@ -28,16 +28,6 @@ Code is the source of truth: `anno.mermaid_dump` (extract + soften) and `anno.me
 - Skip a three-column `inputs` / `algos` / `outputs` wrapper and skip `inputs --> algos --> outputs`. Dagre stacks those boxes. Let LR follow the dataflow; package subgraphs are enough.
 - VS Code-only previewers also choke on `class` / `classDef`, `stroke:#hex`, unquoted `-->|2d|`, and `direction` inside subgraphs. The sidecar is mermaid 11 and is the target.
 
-## Pipeline co-work (default loop)
+## Co-work
 
-`anno mermaid pipeline` is **human + agent on the same `.md`**. After opening the sidecar, schedule a **1m implement loop** (not a liveness ping).
-
-Each fire (no inline poll):
-
-1. Read `notes/mermaid/pipeline.md`.
-2. If there are new notes (`where X?`, `add Y`, stray fence lines, questions below the fence) that are not already nodes/edges — implement them. Connect **node ids**. Files on **edge labels**. Do not save empty.
-3. **User corrections beat leftover notes.** If the user said a thing is not viz / do not add X, delete or rewrite the stale `add X` line so the next fire cannot undo it. Already-done `add Y` notes must be removed, not re-applied.
-4. If none — report `EDITS none` and end that fire.
-5. Status: `EDITS none` or `EDITS applied: <what changed>`.
-
-Keep the loop until the user stops it or the file is missing. The sidecar already rerenders; only run `anno mermaid pipeline` if the process is down. A `/content` 200 check is **not** co-work.
+Loop prompt and completion rules: `SKILL.md` (**Co-work**).

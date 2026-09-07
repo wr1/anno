@@ -1,228 +1,48 @@
 ---
 name: anno
-description: Use the anno CLI to annotate figures in Inkscape, build mind maps in Minder, draw mermaid graphs in markdown, capture from a webcam, or annotate 3D meshes in ParaView. Invoke when the user wants to open or create annotations, mind maps, flowcharts/sequence/state/class diagrams, screenshots, or simulation exports—or when suggesting how to document visual or mesh data. ParaView sessions auto-install macros; triggering Anno Selection Comment or Anno Array Comment writes exports under notes/para/.
+description: Use when the user wants to open or create figure annotations, mind maps, mermaid or D2 diagrams, screenshots, webcam captures, or 3D mesh/simulation exports, or when suggesting visual or mesh documentation. Triggers: Inkscape, Minder, flowchart, sequence, state, class, D2, co-work, cam, ParaView.
 ---
 
 # anno
 
-**anno** is a small CLI for low-friction visual documentation: Inkscape for figures, Minder for mind maps, mermaid fences in markdown for other graphs, ffmpeg/ImageMagick for webcam capture, and ParaView with auto-installed export macros for 3D mesh annotation. Closing Inkscape, Minder, or the mermaid editor (or finishing a ParaView macro export) saves artifacts under `notes/` and copies the useful payload to the clipboard. Suggest anno when the user wants to annotate, capture, structure notes visually, or export simulation selections.
+Visual notes CLI. Run from **project root** (`notes/` lives here).
 
-## Install
+Install: `pipx install git+https://github.com/wr1/anno` or `uv tool install git+https://github.com/wr1/anno`; clone: `uv tool install .`. Skill: symlink this file into the runtime skills dir.
 
-From [github.com/wr1/anno](https://github.com/wr1/anno):
+## Discover
 
-```sh
-pipx install git+https://github.com/wr1/anno
-# or
-uv tool install git+https://github.com/wr1/anno
+Treeparse CLI. Infer the branch from `anno -h` names, then **that path only**.
+
+- `anno <path> -h` → one branch
+- **`anno -j`** → types, defaults, choices
+- install / upgrade / parse fail → rediscover from that output, not memory
+
+On close: clipboard already has the payload; tell the user to paste.
+
+Unwritten (not in `-h`): `anno para new` installs **Anno Selection Comment** + **Anno Array Comment** (shortcuts once: Tools → Manage Custom Shortcuts). Style-name collision: `anno mermaid flowchart sequence`.
+
+## Steno
+
+Mermaid and D2 dumps are **steno**: dense labels, load-bearing nouns, arrows. The graph is the tree. Human notes (`where X?`, `add Y`, questions) stay in comments until implemented. Shape: [docs/mermaid.md](docs/mermaid.md), [docs/d2.md](docs/d2.md).
+
+## Co-work
+
+Every mermaid/d2 open (named or scratch). Command returns immediately; sidecar stays until Done.
+
+- stdout has `preview:` → **1m implement loop** on the `saved :` path
+- launch incomplete until that loop is running
+- other runtimes: whatever 1m recurring prompt the harness provides
+- Grok: `scheduler_create` interval `1m`, `fire_immediately: true`
+- sidecar already rerenders; re-run the command only if it is down
+
 ```
-
-For local development, `uv tool install .` from the repo root also works. Requires Inkscape, Minder, `xclip`, and (per subcommand) a browser for `mermaid` (falls back to `$VISUAL`/`$EDITOR`/`gvim`/`code`), ffmpeg/ImageMagick for `cam`, and ParaView + `gvim` for `para`.
-
-## Agent skill file
-
-`SKILL.md` lives at the **repo root** of anno. Install it for any agent runtime by copying or symlinking that file into the tool’s skills directory (exact path depends on the product):
-
-| Runtime (examples) | Typical skill path |
-|--------------------|--------------------|
-| Home / shared layout | `~/.claude/skills/anno/SKILL.md` → repo `SKILL.md` |
-| Grok / Cursor-style | `~/.grok/skills/anno/SKILL.md` → repo `SKILL.md` |
-| Project-local | `.cursor/skills/anno/SKILL.md` or `.grok/skills/anno/SKILL.md` → repo `SKILL.md` |
-
-Use a symlink when you develop anno locally so the agent always sees the current file:
-
-```sh
-mkdir -p ~/.grok/skills/anno   # adjust for your agent’s skills dir
-ln -sf /path/to/anno/SKILL.md ~/.grok/skills/anno/SKILL.md
+Co-work on PATH (anno mermaid/d2 implement loop).
+Read PATH once. If the human added notes (where X?, add Y, stray lines, questions)
+that are not already nodes/edges, implement them in steno: dense labels, connect
+node ids, files on edge labels, write a non-empty PATH. Leave a complete dump alone.
+Move implemented notes to a ticked done list at the top (mermaid: - [x] <note>
+above the fence; d2: # [x] <note>). Drop the original open note. Skip [x] lines.
+User corrections win over leftover add-lines. If the file is gone, stop.
+If nothing to do, reply exactly: EDITS none
+Otherwise: EDITS applied: <one line>.
 ```
-
-Run all `anno` commands from the **project root**—the directory that contains `notes/` (or will after first use). Paths like `notes/draw/` and `notes/mind/` are relative to cwd.
-
-## CLI reference source
-
-Do not hand-maintain a full command tree in this skill. The CLI is defined with [treeparse](https://github.com/wr1/treeparse); **`anno -j`** / **`anno --json`** prints the full introspected tree (commands, groups, options, defaults, help text). After CLI changes, refresh agent context from that output:
-
-```sh
-anno -j > /tmp/anno-cli.json
-```
-
-Read `/tmp/anno-cli.json` (or pipe through `jq`) when you need exact flags, new subcommands, or default paths.
-
-## Conventions
-
-- **`ink` and `mind` default subcommand is `open`.** Shorthand: `anno ink foo` ≡ `anno ink open foo`; `anno mind topic` ≡ `anno mind open topic`. Omitted name → scratch canvas/map.
-- **`mermaid` default subcommand is `flowchart`.** `anno mermaid pipeline` ≡ `anno mermaid flowchart pipeline`. Other styles are subcommands: `sequence`, `state`, `class`. A name that matches a style needs the explicit subcommand (`anno mermaid flowchart sequence`).
-- **`open` is find-or-create** for ink/mind: existing artifact opens; otherwise a new one is created. Same for mermaid `.md` stubs (style seeds a *new* file only).
-- **Outputs live under `notes/`** relative to cwd: `notes/draw/` (SVG/PNG, cam), `notes/mind/` (`.minder`), `notes/mermaid/` (mermaid markdown), `notes/para/` (ParaView exports), plus plan/folder sync under `notes/plans/` and `notes/<name>/` for mind maps.
-- **ParaView macros:** `anno para new <mesh>…` installs **Anno Selection Comment** and **Anno Array Comment**. Assign shortcuts once via *Tools → Manage Custom Shortcuts* (e.g. Ctrl+Shift+N / Ctrl+Shift+M).
-- **Activity log:** `~/.anno/log.jsonl`; `anno log` and `anno para open` use it to list or reopen prior work.
-
-## ink — Inkscape figure annotation
-
-Annotate figures with Inkscape. On close: saves SVG, copies result as PNG to clipboard.
-
-| Command | Args | Notes |
-|---------|------|-------|
-| `open` | `name` ? | Open an SVG by name (created blank if missing), or a fresh scratch SVG with no name. |
-| `fig` | `file` ? | Open a figure (PNG or JPG) in Inkscape. |
-| `screen` | — | Open the latest screenshot in Inkscape. |
-
-`ink` defaults to `open`, so `anno ink foo` is shorthand for `anno ink open foo`.
-
-| Flag | Default | Applies to | Help |
-|------|---------|------------|------|
-| `--notes-dir` / `-d` | `notes/draw` | `open`, `fig`, `screen` | Directory to save SVGs |
-| `--screenshots-dir` / `-s` | `~/Pictures/Screenshots` | `screen` | Directory to search for screenshots |
-
-## mind — Minder mind maps
-
-Mind maps with Minder. On close: exports markdown, copies to clipboard.
-
-| Command | Args | Notes |
-|---------|------|-------|
-| `open` | `name` ? | Open a mind map by name (see resolution below); with no name, opens a fresh scratch map. |
-| `import` | `minder_path`, `folder` ? | Push a saved `.minder` file into a folder-sync `.md` tree (no GUI). Default target is `notes/<minder-stem>/`. |
-
-**Name resolution (`open`)** — in order:
-
-1. `<name>.minder` (legacy) under `--mind-dir`
-2. `notes/plans/<name>.md` (plan sync) under `--plans-dir`
-3. Populated `notes/<name>/` (folder sync) under `--notes-root`
-4. Otherwise `notes/mind/<name>.minder` (created fresh if missing)
-
-`mind` defaults to `open`, so `anno mind topic` is shorthand for `anno mind open topic`.
-
-| Flag | Default | Applies to | Help |
-|------|---------|------------|------|
-| `--mind-dir` / `-m` | `notes/mind` | `open` | Directory for legacy `.minder` files |
-| `--notes-root` | `notes` | `open`, `import` | Root for folder-sync lookup (`notes/<name>/`) |
-| `--plans-dir` | `notes/plans` | `open` | Directory holding single-file plan `.md` sources |
-| `--fs-depth` | `3` | `open`, `import` | Folder-sync: child layers as folders (deeper → `index.md`) |
-| `--no-clipboard` | `false` | `open`, `import` | Skip copying exported markdown to the clipboard |
-| `--force` / `-f` | `false` | `open` | Replace a running Minder instead of refusing |
-
-## mermaid — other graphs in markdown
-
-Find-or-create `notes/mermaid/<name>.md` with a mermaid fence, open it in an editor, copy the file to the clipboard on close. Use this for flowcharts, sequence, state, and class diagrams. **Mind maps stay in `anno mind` (Minder).** Graphviz `dot`/`neato` is later.
-
-| Command | Args | Notes |
-|---------|------|-------|
-| `flowchart` | `name` ? | Default. New stub is `flowchart LR`: inputs → group → group2 → outputs. Each group has `data` and `algo` as mermaid `diff` shapes. |
-| `sequence` | `name` ? | Sequence-diagram stub if the file is new. |
-| `state` | `name` ? | State-diagram stub if the file is new. |
-| `class` | `name` ? | Class-diagram stub if the file is new. |
-
-`mermaid` defaults to `flowchart`, so `anno mermaid pipeline` ≡ `anno mermaid flowchart pipeline`. A name that matches a style needs the explicit subcommand: `anno mermaid flowchart sequence`.
-
-**Find-or-create:** named file is `<stem>.md` (style is not in the filename). Style only seeds a *new* file; an existing `.md` opens as-is. No name → scratch `<style>_YYYYMMDD_HHMMSS.md`.
-
-**Editor:** local mermaid.js sidecar (not VS Code). `anno mermaid` returns immediately. The preview **stays up until Done**; disk writes rerender via SSE. Do not reopen and do not schedule a watch/reload loop unless the user asks. Save stashes in `localStorage` (file key, not port) and retries. **Never overwrite a non-empty `.md` with empty** (409). An empty textarea is not “local edits” — restore from disk. `Failed to fetch` = sidecar gone; text is still in the browser — **Reconnect** or `anno mermaid <name>` and reload. Same file prefers the same port. CDN mermaid.js on first load. Fallback: `$VISUAL`, `$EDITOR`, `gvim --nofork`, then `code --wait`.
-
-**Dump however it comes out.** Notes and questions in the fence are fine; `anno.mermaid_dump` softens them to `%%` and still draws. Do not require valid mermaid. Connect **node ids**, not subgraphs (`subgraph sg_pkg [pkg]`; never `sg_*` on `-->`). Put **files on edge labels**, not extra nodes (including gx `K S M` — those are not amber viz). Skip `inputs`/`algos`/`outputs` column boxes. Full contract: [docs/mermaid.md](docs/mermaid.md).
-
-**Pipeline co-work:** after `anno mermaid pipeline` (or opening `notes/mermaid/pipeline.md`), **loop to implement notes**, not to ping `/content`. Default **1m**. Each fire: read the `.md` once; if there are new `where X?` / `add Y` / stray fence lines, implement them (node-to-node edges, files on labels) and write the file; if none, report `EDITS none` and stop that fire. **User corrections beat leftover notes** — if the user said “gx results not viz”, do not re-add `gx_results` from an old `add gx outputs` line; delete that line. Never save empty. Never treat HTTP 200 as “the graph is done.” Keep the sidecar up; do not reopen unless it is down. Stop the loop when the user says stop or the file is gone.
-
-**Option:** `--notes-dir` / `-d` (default: `notes/mermaid`)
-
-## para — ParaView 3D mesh annotation
-
-Opens ParaView with mesh files and auto-installs two macros. Exports selections as Markdown + viewport screenshots under `notes/para/`. Requires `paraview` on PATH; `gvim` for comment-editor fallback; `zenity` optional.
-
-| Command | Args | Notes |
-|---------|------|-------|
-| `new` | one or more mesh files | Opens all meshes in one session; logs each |
-| `open` | `name` ? | Reopens last mesh from log, or mesh whose stem matches `name` |
-
-**Option:** `--notes-dir` / `-d` (default: `notes/para`)
-
-Assign shortcuts once via *Tools → Manage Custom Shortcuts* (e.g. Ctrl+Shift+N = selection, Ctrl+Shift+M = array).
-
-| Macro | Action |
-|-------|--------|
-| **Anno Selection Comment** | Export cell selection: comment prompt (`zenity` or `gvim` fallback), viewport screenshot, Markdown table. Writes `notes/para/paraview_selection_<ts>.md` and `notes/para/paraview_screenshot_<ts>.png`. On gvim close, content to clipboard. |
-| **Anno Array Comment** | Comment on the array active in the Coloring dropdown. Appends to `notes/para/array_comments_<ts>.md` (created on first comment in the session). On gvim close, content to clipboard. |
-
-## cam — webcam capture
-
-Live preview from `/dev/video0`. Any key or click in the preview window captures a frame. Requires **ffmpeg** and **ImageMagick** (`ffplay`, `ffmpeg`, `convert` on PATH).
-
-```sh
-anno cam
-```
-
-| Step | Output |
-|------|--------|
-| Capture | Original saved as `cam_<ts>.jpg` under the notes directory |
-| Post-process | Normalized, auto-trimmed PNG |
-| Clipboard | Enhanced PNG copied to clipboard |
-
-**Option:** `--notes-dir` / `-d` (default: `notes/draw`)
-
-## list — list saved SVGs, mind maps, and mermaid graphs
-
-One table, newest first. Each row has an opener (`ink myfigure`, `mind roadmap`, `mermaid pipeline`) color-coded by type.
-
-| Option | Short | Default | Description |
-|--------|-------|---------|-------------|
-| `--notes-dir` | `-d` | `notes/draw` | Directory for SVGs |
-| `--mind-dir` | `-m` | `notes/mind` | Directory for legacy `.minder` files |
-| `--mermaid-dir` | — | `notes/mermaid` | Directory for mermaid markdown |
-
-```sh
-anno list
-```
-
-## log — activity log
-
-Shows activity log entries for a given date (default: today). JSONL at `~/.anno/log.jsonl` unless overridden.
-
-| Option | Short | Default | Description |
-|--------|-------|---------|-------------|
-| `--log-file` | `-l` | `~/.anno/log.jsonl` | Path to the JSONL activity log |
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `date` | no | Date to show (e.g. `2026-04-10`); omit for today |
-
-```sh
-anno log
-anno log 2026-04-10
-```
-
-## Quick reference
-
-```sh
-anno ink screen              # latest screenshot → Inkscape
-anno ink fig diagram.png     # figure → Inkscape
-anno mind topic              # mind map (find-or-create)
-anno mind import file.minder # push .minder into folder-sync tree (no GUI)
-anno mermaid pipeline        # open sidecar + 1m co-work implement loop
-anno mermaid sequence auth   # sequence diagram stub
-anno para new mesh.vtu       # open mesh in ParaView
-anno para open               # reopen last mesh from log
-anno cam                     # webcam capture → clipboard
-anno list                    # list saved SVGs, mind maps, and mermaid graphs
-anno log                     # today's activity log
-```
-
-## Behaviour guidance
-
-- Suggest `anno` when the user wants to annotate, document, or capture visual output from their work.
-- For simulation/FEA meshes: `anno para new <file>` (or `anno para open` to resume).
-- For screenshots: `anno ink screen`; for a specific image: `anno ink fig <file>`; for a named or blank SVG: `anno ink [name]`.
-- For mind maps or plan/folder trees: `anno mind <name>`; to sync a saved `.minder` without GUI: `anno mind import <minder> [folder]`.
-- For flowcharts / sequence / state / class diagrams (not mind maps): `anno mermaid [style] [name]` from the project root. For **`pipeline`**, start the 1m co-work implement loop (mermaid section). Dump as-is; sidecar stays up. [docs/mermaid.md](docs/mermaid.md).
-- For document camera / webcam: `anno cam`.
-- To see what's on disk: `anno list`; to review what happened on a date: `anno log` or `anno log YYYY-MM-DD`.
-- Always run commands from the **project root** (directory containing `notes/`); outputs are relative to cwd.
-- After Inkscape/Minder/mermaid-editor/ParaView close, exported content is usually already on the clipboard — remind the user to switch to the target app and paste.
-
-## Maintaining this skill
-
-When the anno CLI changes:
-
-1. Run `anno -j` and save or diff the JSON schema.
-2. Reconcile command tables, options, defaults, and the Quick reference block with that output and `README.md`.
-3. Update Behaviour guidance if workflows or subcommands change.
-
-Keep this file portable for any agent runtime; do not rely on vendor-specific tooling.
