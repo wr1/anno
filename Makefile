@@ -52,15 +52,8 @@ format: ## ruff format (src + tests)
 pre-commit: ## Run pre-commit hooks on all files
 	$(RUN) pre-commit run --all-files
 
-smoke: ## CLI smoke (help trees + list)
-	$(RUN) anno --help
-	$(RUN) anno ink --help
-	$(RUN) anno mind --help
-	$(RUN) anno mermaid --help
-	$(RUN) anno d2 --help
-	$(RUN) anno d2 check --help
-	$(RUN) anno para --help
-	$(RUN) anno list
+smoke: ## CLI smoke (every leaf --help + each workflow path)
+	$(PYTEST) -q tests/test_smoke.py
 
 ## CLI
 
