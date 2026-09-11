@@ -16,6 +16,27 @@ from anno.constants import (
 )
 from anno.log_util import log_activity
 
+# Inkscape registers sodipodi as sodipodi-0.dtd. sodipodi-0.0.dtd is a different
+# URI, so libxml remaps the prefix to sodipodi0 and load warns "unknown type".
+SODIPODI_NS = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
+
+
+def _svg_document(w: int, h: int, extra_xmlns: str = "", inner: str = "") -> str:
+    extra = f"\n     {extra_xmlns}" if extra_xmlns else ""
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<svg xmlns="http://www.w3.org/2000/svg"{extra}\n'
+        f'     xmlns:sodipodi="{SODIPODI_NS}"\n'
+        f'     xmlns:inkscape="{INKSCAPE_NS}"\n'
+        f'     width="{w}" height="{h}" viewBox="0 0 {w} {h}">\n'
+        '  <sodipodi:namedview id="namedview1" inkscape:document-units="px"/>\n'
+        "  <style>\n"
+        f"    text, tspan {{ font-size: {DEFAULT_FONT_SIZE}px; }}\n"
+        "  </style>\n"
+        f"{inner}</svg>"
+    )
+
 
 def _image_dimensions(path: Path) -> tuple[int, int]:
     data = path.read_bytes()
@@ -40,19 +61,15 @@ def _embed_image_into_svg(img_path: Path, svg_path: Path) -> None:
     data = base64.b64encode(img_path.read_bytes()).decode()
     w, h = _image_dimensions(img_path)
     mime = "image/jpeg" if img_path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
-    svg = f"""<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg"
-     xmlns:xlink="http://www.w3.org/1999/xlink"
-     xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd"
-     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-     width="{w}" height="{h}" viewBox="0 0 {w} {h}">
-  <sodipodi:namedview inkscape:document-units="px"/>
-  <style>
-    text, tspan {{ font-size: {DEFAULT_FONT_SIZE}px; }}
-  </style>
-  <image xlink:href="data:{mime};base64,{data}" x="0" y="0" width="{w}" height="{h}"/>
-</svg>"""
-    svg_path.write_text(svg)
+    inner = f'  <image xlink:href="data:{mime};base64,{data}" x="0" y="0" width="{w}" height="{h}"/>\n'
+    svg_path.write_text(
+        _svg_document(
+            w,
+            h,
+            extra_xmlns='xmlns:xlink="http://www.w3.org/1999/xlink"',
+            inner=inner,
+        )
+    )
 
 
 def _export_png(svg_path: Path) -> Path:
@@ -86,17 +103,7 @@ def _run_inkscape_and_export(svg: Path) -> None:
 
 
 def _make_blank_svg(path: Path, w: int = 1920, h: int = 1080) -> None:
-    svg = f"""<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg"
-     xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd"
-     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-     width="{w}" height="{h}" viewBox="0 0 {w} {h}">
-  <sodipodi:namedview inkscape:document-units="px"/>
-  <style>
-    text, tspan {{ font-size: {DEFAULT_FONT_SIZE}px; }}
-  </style>
-</svg>"""
-    path.write_text(svg)
+    path.write_text(_svg_document(w, h))
 
 
 def cmd_ink_open(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
