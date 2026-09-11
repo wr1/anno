@@ -7,6 +7,7 @@ dist/
 build/
 output.png
 notes/
+docs/
 *.minder
 help.txt
 CLAUDE.md

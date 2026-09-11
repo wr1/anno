@@ -23,7 +23,7 @@ Unwritten (not in `-h`): `anno para new` installs **Anno Selection Comment** + *
 
 ## Steno
 
-Mermaid and D2 dumps are **steno**: dense labels, load-bearing nouns, arrows. The graph is the tree. Human notes (`where X?`, `add Y`, questions) stay in comments until implemented. Shape: [docs/mermaid.md](docs/mermaid.md), [docs/d2.md](docs/d2.md).
+Mermaid and D2 dumps are **steno**: dense labels, load-bearing nouns, arrows. The graph is the tree. Human notes (`where X?`, `add Y`, questions) stay in comments until implemented.
 
 ## Co-work
 

@@ -68,7 +68,7 @@ anno mermaid state door
 anno mermaid class model
 ```
 
-Find-or-create a markdown file with a mermaid fence, open a local mermaid.js preview in the browser. The command returns immediately. The preview **keeps running until you click Done** and rerenders when the file changes. Dump notes in the fence — they become `%%` comments and the graph still draws. The sidecar **refuses to save empty over a non-empty file**. `Failed to fetch` means the process died; Reconnect or run `anno mermaid <name>` again — the buffer is not discarded. Connect **nodes**, not subgraphs; put filenames on **edges**. Agent contract: `docs/mermaid.md`. Falls back to `$VISUAL` / `$EDITOR` / `gvim` / `code` if no browser is available. Style only seeds a *new* file. A name that matches a style (e.g. `sequence`) needs the explicit subcommand: `anno mermaid flowchart sequence`.
+Find-or-create a markdown file with a mermaid fence, open a local mermaid.js preview in the browser. The command returns immediately. The preview **keeps running until you click Done** and rerenders when the file changes. Dump notes in the fence — they become `%%` comments and the graph still draws. The sidecar **refuses to save empty over a non-empty file**. `Failed to fetch` means the process died; Reconnect or run `anno mermaid <name>` again — the buffer is not discarded. Connect **nodes**, not subgraphs; put filenames on **edges**. Falls back to `$VISUAL` / `$EDITOR` / `gvim` / `code` if no browser is available. Style only seeds a *new* file. A name that matches a style (e.g. `sequence`) needs the explicit subcommand: `anno mermaid flowchart sequence`.
 
 Mind maps stay in Minder. Graphviz `dot`/`neato` is later.
 
@@ -80,7 +80,7 @@ anno d2 pipeline             # find-or-create + compile-check + preview
 anno d2 check pipeline       # full d2 compile (preview soften; --strict = raw)
 ```
 
-Find-or-create a `.d2` file and open a local D2 WASM preview in the browser. The command returns immediately. The preview **keeps running until you click Done** and rerenders when the file changes. Dump notes in the file — they become `#` comments and the graph still draws. The sidecar **refuses to save empty over a non-empty file**. `Failed to fetch` means the process died; Reconnect or run `anno d2 <name>` again — the buffer is not discarded. Connect **nodes**; put filenames on **edges**. Agent contract: `docs/d2.md`. Falls back to `$VISUAL` / `$EDITOR` / `gvim` / `code` if no browser is available.
+Find-or-create a `.d2` file and open a local D2 WASM preview in the browser. The command returns immediately. The preview **keeps running until you click Done** and rerenders when the file changes. Dump notes in the file — they become `#` comments and the graph still draws. The sidecar **refuses to save empty over a non-empty file**. `Failed to fetch` means the process died; Reconnect or run `anno d2 <name>` again — the buffer is not discarded. Connect **nodes**; put filenames on **edges**. Falls back to `$VISUAL` / `$EDITOR` / `gvim` / `code` if no browser is available.
 
 ## ParaView — 3D meshes
 
