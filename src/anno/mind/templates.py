@@ -9,6 +9,7 @@ changes needed.
 
 from pathlib import Path
 
+from anno.mind.format import write_minder_archive
 from anno.mind.tree import MindNode, parse_headings_markdown, tree_to_minder_xml
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -54,4 +55,4 @@ def seed_minder(path: Path, *, root_title: str, template: str = "") -> None:
         tree = load_template(template, root_title=root_title)
     else:
         tree = MindNode(title=root_title)
-    path.write_text(tree_to_minder_xml(tree))
+    write_minder_archive(path, tree_to_minder_xml(tree))

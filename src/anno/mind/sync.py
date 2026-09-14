@@ -12,6 +12,7 @@ from anno.constants import (
 )
 from anno.log_util import log_activity
 from anno.mind.folder import folder_has_content, folder_to_tree, tree_to_folder
+from anno.mind.format import write_minder_archive
 from anno.mind.process import (
     minder_export_markdown,
     minder_launch_gui,
@@ -86,7 +87,7 @@ def run_minder_smart_sync_plan(
         body = plan_md.read_text() if plan_md.exists() else ""
         if body.strip():
             tree = parse_headings_markdown(body)
-            tmp_minder.write_text(tree_to_minder_xml(tree))
+            write_minder_archive(tmp_minder, tree_to_minder_xml(tree))
             in_count = len(flatten(tree)) - 1
             print(f"import : {in_count} nodes from {plan_md.name}")
         else:
@@ -161,7 +162,7 @@ def run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard: 
     tree_in, _ingested = folder_to_tree(root_dir, fs_depth)
     with tempfile.TemporaryDirectory(prefix="anno-folder-") as td:
         tmp_minder = Path(td) / f"{root_dir.name}.minder"
-        tmp_minder.write_text(tree_to_minder_xml(tree_in))
+        write_minder_archive(tmp_minder, tree_to_minder_xml(tree_in))
         print(f"import : {len(flatten(tree_in)) - 1} nodes from {root_dir}")
         try:
             minder_launch_gui(tmp_minder, force)

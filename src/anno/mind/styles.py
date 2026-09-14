@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from anno.mind.format import MINDER_FILE_VERSION, write_minder_archive
+
 STYLE_COMMON = (
     ' branchmargin="100" branchradius="25" linktype="straight" linkwidth="4" linkarrow="false"'
     ' linkdash="solid" nodeborder="underlined" nodewidth="200" nodeborderwidth="4" nodefill="false"'
@@ -20,9 +22,10 @@ MINDER_STYLES = (
 
 
 def make_minder_file(path: Path) -> None:
-    path.write_text(
+    write_minder_archive(
+        path,
         '<?xml version="1.0"?>\n'
-        '<minder version="1.16.2" parent-etag="0" etag="0">\n'
+        f'<minder version="{MINDER_FILE_VERSION}" parent-etag="0" etag="0">\n'
         '  <theme name="dark" label="Dark" index="1"/>\n'
         f"  <styles>{MINDER_STYLES}</styles>\n"
         "  <images/>\n"
@@ -31,5 +34,5 @@ def make_minder_file(path: Path) -> None:
         "  <groups/>\n"
         "  <stickers/>\n"
         '  <nodelinks id="0"/>\n'
-        "</minder>\n"
+        "</minder>\n",
     )

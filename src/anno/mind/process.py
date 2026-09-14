@@ -10,6 +10,7 @@ from pathlib import Path
 from anno.clipboard import copy_text_to_clipboard
 from anno.constants import DEFAULT_NOTES_ROOT, MINDER, MINDER_GUI_MIN_ELAPSED
 from anno.log_util import log_activity
+from anno.mind.format import require_minder_archive
 from anno.mind.tree import parse_bullets_markdown, tree_to_numbered_markdown
 
 
@@ -135,7 +136,15 @@ def run_minder(
 # isolation wrapper achieved the same thing but stalled 5-10s on portal/secrets
 # init in sessions without xdg-desktop-portal; reaping is cheaper and fixes
 # the same wedge.
+def _require_minder2(minder_file: Path) -> None:
+    try:
+        require_minder_archive(minder_file)
+    except ValueError as exc:
+        sys.exit(f"error  : {exc}")
+
+
 def minder_export_markdown(minder_file: Path, md_file: Path) -> None:
+    _require_minder2(minder_file)
     reap_existing_minder("markdown export")
     # Hard-fail on a missing/empty output file. We ignore the process exit
     # code because Minder exits rc=1 even on a successful export (Gtk/portal
@@ -143,7 +152,7 @@ def minder_export_markdown(minder_file: Path, md_file: Path) -> None:
     # got written. A silent failure here used to leave smart-sync thinking
     # the user emptied the tree, which proceeded to wipe the source folder.
     result = subprocess.run(
-        [MINDER, str(minder_file), "--export=markdown", str(md_file)],
+        [MINDER, "--export=markdown", str(minder_file), str(md_file)],
         capture_output=True,
     )
     if not md_file.exists() or not md_file.read_text().strip():
@@ -159,6 +168,7 @@ def minder_launch_gui(minder_file: Path, force: bool = False) -> None:
     # in the command callbacks; here we only reap when the caller opted in with
     # --force. The fast-exit guard below stays as a backstop for the rare race
     # where an instance starts between the refusal check and this launch.
+    _require_minder2(minder_file)
     if force:
         reap_existing_minder("GUI launch (--force)")
     t0 = time.monotonic()

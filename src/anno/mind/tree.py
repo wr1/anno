@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 from xml.sax.saxutils import escape as xml_escape
 
+from anno.mind.format import MINDER_FILE_VERSION
 from anno.mind.styles import MINDER_STYLES
 
 
@@ -242,7 +243,7 @@ def tree_to_minder_xml(root: MindNode) -> str:
     nodes_xml = "\n".join(lines)
     return (
         '<?xml version="1.0"?>\n'
-        '<minder version="1.16.2" parent-etag="0" etag="0">\n'
+        f'<minder version="{MINDER_FILE_VERSION}" parent-etag="0" etag="0">\n'
         '  <theme name="dark" label="Dark" index="1"/>\n'
         f"  <styles>{MINDER_STYLES}</styles>\n"
         "  <images/>\n"

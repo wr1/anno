@@ -1,0 +1,2 @@
+# Minder 2.0 .minder files are gzip tar archives, not text XML.
+*.minder -diff merge=binary

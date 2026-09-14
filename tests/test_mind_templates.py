@@ -10,6 +10,7 @@ Runs standalone (`python tests/test_mind_templates.py`) or under pytest.
 import tempfile
 from pathlib import Path
 
+from anno.mind.format import is_minder2_archive, read_map_xml
 from anno.mind.templates import TemplateNotFoundError, available_templates, load_template, seed_minder
 from anno.mind.tree import tree_to_minder_xml
 
@@ -58,7 +59,8 @@ def test_seed_minder_without_template():
         path = Path(tmp) / "roadmap.minder"
         seed_minder(path, root_title="roadmap")
         assert path.is_file()
-        assert '<text data="roadmap"/>' in path.read_text()
+        assert is_minder2_archive(path)
+        assert '<text data="roadmap"/>' in read_map_xml(path)
     print("ok: seed_minder without template writes a single-root .minder")
 
 
@@ -66,7 +68,7 @@ def test_seed_minder_with_template():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "mm_20260101.minder"
         seed_minder(path, root_title="mm_20260101", template="software")
-        text = path.read_text()
+        text = read_map_xml(path)
         assert '<text data="mm_20260101"/>' in text or '<text data="Aim"/>' in text
         assert '<text data="Aim"/>' in text
     print("ok: seed_minder with template writes section nodes and overrides root title")
