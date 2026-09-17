@@ -1,6 +1,6 @@
 """Minder 2.0 `.minder` files: gzip tar containing `map.xml` (plus images).
 
-anno only writes and reads this archive. Minder 1.x XML documents are refused.
+anno writes this archive. Minder 1.x XML on input is converted in place.
 """
 
 from __future__ import annotations
@@ -28,16 +28,41 @@ def is_minder2_archive(path: Path) -> bool:
         return f.read(2) == GZIP_MAGIC
 
 
+def is_legacy_xml_minder(path: Path) -> bool:
+    """True when `path` is a Minder 1.x XML document, not a 2.0 archive."""
+    if not path.is_file():
+        return False
+    with path.open("rb") as f:
+        return _looks_like_xml(f.read(256))
+
+
+def upgrade_legacy_minder(path: Path) -> bool:
+    """Rewrite a 1.x XML `.minder` as a 2.0 archive. Return True if converted."""
+    if not is_legacy_xml_minder(path):
+        return False
+    write_minder_archive(path, path.read_text(encoding="utf-8"))
+    return True
+
+
 def require_minder_archive(path: Path) -> None:
     """Raise ValueError unless `path` is a Minder 2.0 gzip-tar archive."""
     if not path.is_file():
         raise ValueError(f"not a file: {path}")
     if is_minder2_archive(path):
         return
-    head = path.read_bytes()[:256]
-    if _looks_like_xml(head):
-        raise ValueError(f"{path} is Minder 1.x XML; only Minder 2.0 archives are supported")
+    if is_legacy_xml_minder(path):
+        raise ValueError(f"{path} is Minder 1.x XML; convert it with upgrade_legacy_minder first")
     raise ValueError(f"{path} is not a Minder 2.0 archive (gzip tar with {MAP_XML_NAME})")
+
+
+def ensure_minder_archive(path: Path) -> bool:
+    """Convert 1.x XML in place if needed, then require a 2.0 archive.
+
+    Returns True if a conversion ran.
+    """
+    converted = upgrade_legacy_minder(path)
+    require_minder_archive(path)
+    return converted
 
 
 def write_minder_archive(path: Path, xml: str) -> None:
@@ -61,8 +86,8 @@ def write_minder_archive(path: Path, xml: str) -> None:
 
 
 def read_map_xml(path: Path) -> str:
-    """Return `map.xml` from a Minder 2.0 archive."""
-    require_minder_archive(path)
+    """Return `map.xml` from a Minder 2.0 archive, converting 1.x XML first."""
+    ensure_minder_archive(path)
     try:
         with tarfile.open(path, "r:gz") as tar:
             try:

@@ -49,7 +49,7 @@ anno mind roadmap            # open or create a map named roadmap
 anno mind                    # blank scratch map
 ```
 
-Edit in [Minder](https://github.com/phase1geo/Minder) 2.0, close the window. Exported markdown is on the clipboard and saved beside the map. `.minder` files are Minder 2.0 archives (gzip tar of `map.xml` plus images).
+Edit in [Minder](https://github.com/phase1geo/Minder) 2.0, close the window. Exported markdown is on the clipboard and saved beside the map. `.minder` files are Minder 2.0 archives (gzip tar of `map.xml` plus images); 1.x XML maps are converted on open.
 
 To sync a `.minder` file into a folder of markdown notes without opening the GUI:
 

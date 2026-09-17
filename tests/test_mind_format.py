@@ -1,8 +1,9 @@
-"""Minder 2.0 `.minder` archive (gzip tar + map.xml). 1.x XML is refused."""
+"""Minder 2.0 `.minder` archive (gzip tar + map.xml). 1.x XML is converted on input."""
 
 import gzip
 import io
 import os
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -10,9 +11,12 @@ import pytest
 
 from anno.mind.format import (
     MAP_XML_NAME,
+    ensure_minder_archive,
+    is_legacy_xml_minder,
     is_minder2_archive,
     read_map_xml,
     require_minder_archive,
+    upgrade_legacy_minder,
     write_minder_archive,
 )
 from anno.mind.process import minder_export_markdown, minder_launch_gui
@@ -64,13 +68,25 @@ def test_is_minder2_archive_false_for_missing_and_xml(tmp_path: Path) -> None:
     assert is_minder2_archive(xml_path) is False
 
 
-def test_require_and_read_refuse_v1_xml(tmp_path: Path) -> None:
+def test_require_refuses_v1_xml_until_converted(tmp_path: Path) -> None:
     path = tmp_path / "old.minder"
     path.write_text(V1_XML)
     with pytest.raises(ValueError, match="1.x XML"):
         require_minder_archive(path)
-    with pytest.raises(ValueError, match="1.x XML"):
-        read_map_xml(path)
+    assert upgrade_legacy_minder(path) is True
+    require_minder_archive(path)
+    assert is_minder2_archive(path)
+    assert upgrade_legacy_minder(path) is False
+
+
+def test_read_and_ensure_convert_v1_xml(tmp_path: Path) -> None:
+    path = tmp_path / "old.minder"
+    path.write_text(V1_XML)
+    assert is_legacy_xml_minder(path)
+    assert ensure_minder_archive(path) is True
+    assert is_minder2_archive(path)
+    assert read_map_xml(path) == V1_XML
+    assert ensure_minder_archive(path) is False
 
 
 def test_require_refuses_missing_and_non_archive(tmp_path: Path) -> None:
@@ -139,10 +155,47 @@ def test_tree_xml_roundtrip_inside_archive(tmp_path: Path) -> None:
     assert "<nodenote>note</nodenote>" in xml
 
 
-def test_export_and_launch_refuse_v1_xml(tmp_path: Path) -> None:
+def test_export_converts_v1_xml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     path = tmp_path / "old.minder"
     path.write_text(V1_XML)
-    with pytest.raises(SystemExit, match="1.x XML"):
-        minder_export_markdown(path, tmp_path / "out.md")
-    with pytest.raises(SystemExit, match="1.x XML"):
-        minder_launch_gui(path)
+    md = tmp_path / "out.md"
+    monkeypatch.setattr("anno.mind.process.reap_existing_minder", lambda _reason: None)
+
+    def fake_run(argv, **_kwargs):
+        Path(argv[-1]).write_text("# converted\n")
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr("anno.mind.process.subprocess.run", fake_run)
+    minder_export_markdown(path, md)
+    assert is_minder2_archive(path)
+    assert read_map_xml(path) == V1_XML
+    assert md.read_text() == "# converted\n"
+    assert "1.x XML → Minder 2.0 archive" in capsys.readouterr().out
+
+
+def test_launch_converts_v1_xml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "old.minder"
+    path.write_text(V1_XML)
+    launched: list[list[str]] = []
+
+    class _Proc:
+        def wait(self):
+            return 0
+
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            return None
+
+        def kill(self):
+            return None
+
+    monkeypatch.setattr("anno.mind.process.subprocess.Popen", lambda argv: launched.append(list(argv)) or _Proc())
+    times = iter([0.0, 5.0])
+    monkeypatch.setattr("anno.mind.process.time.monotonic", lambda: next(times, 5.0))
+    minder_launch_gui(path)
+    assert is_minder2_archive(path)
+    assert launched and str(path) in launched[0]
