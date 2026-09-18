@@ -1,55 +1,28 @@
-"""Local D2 editor: live preview via @terrastruct/d2 WASM, save back, block until Done."""
+"""Local D2 editor: live preview via @terrastruct/d2 WASM. Format shim.
+
+The HTTP sidecar, state files, and launch/reuse logic live in `anno.live`;
+this module supplies the D2 editor page and the format's state directory.
+"""
 
 from __future__ import annotations
 
-import hashlib
-import json
-import os
-import queue
-import shutil
-import subprocess
 import sys
-import threading
-import time
-import webbrowser
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Event
-from urllib.error import URLError
-from urllib.request import urlopen
 
-LIVE_HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>anno d2</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body {
-    height: 100%; margin: 0; background: #0d1117; color: #e6edf3;
-    font: 14px/1.4 ui-sans-serif, system-ui, sans-serif;
-  }
-  #bar {
-    display: flex; align-items: center; gap: 12px; padding: 8px 12px;
-    border-bottom: 1px solid #30363d;
-  }
-  #bar button {
-    background: #238636; color: #fff; border: 0; border-radius: 6px;
-    padding: 6px 12px; font-weight: 600; cursor: pointer;
-  }
-  #bar button:hover { background: #2ea043; }
+from anno.live import LiveConfig, build_html
+from anno.live import preview_url_if_running as _preview
+from anno.live import run_live_editor as _run
+from anno.live import running_live_paths as _running
+from anno.live import serve_until_done as _serve
+from anno.live import start_live_server as _start
+from anno.live import write_state as _write_state_impl
+
+_D2_CSS = r"""
   #bar .zoom button {
     background: #21262d; padding: 6px 10px;
   }
   #bar .zoom button:hover { background: #30363d; }
   #zoomPct { color: #8b949e; min-width: 3.5em; }
-  #status { color: #8b949e; }
-  #status[data-kind="err"] { color: #f85149; }
-  #status[data-kind="ok"] { color: #3fb950; }
-  #status[data-kind="warn"] { color: #d29922; }
-  #wrap {
-    display: flex; height: calc(100% - 45px); min-height: 0;
-  }
   #editor {
     position: relative; flex: 0 0 auto; width: var(--split, 50%);
     min-width: 120px; min-height: 0; background: #161b22;
@@ -75,64 +48,33 @@ LIVE_HTML = """<!DOCTYPE html>
   .tok-n { color: #79c0ff; }
   .tok-p { color: #8b949e; }
   .tok-i { color: #7ee787; }
-  #gutter {
-    flex: 0 0 6px; cursor: col-resize; background: #30363d;
-  }
-  #gutter:hover, #gutter.drag { background: #58a6ff; }
   #preview {
-    flex: 1 1 auto; min-width: 120px; overflow: hidden; padding: 0;
-    background: #fff; color: #111; position: relative; cursor: grab;
+    overflow: hidden; padding: 0; position: relative; cursor: grab;
     touch-action: none; overscroll-behavior: none;
   }
   #preview.panning { cursor: grabbing; }
   #stage {
     position: absolute; left: 0; top: 0; transform-origin: 0 0;
   }
-  #preview .err {
-    color: #cf222e; white-space: pre-wrap; font: 13px/1.45 ui-monospace, monospace;
-    padding: 16px;
-  }
   #preview svg { max-width: none; max-height: none; display: block; }
   #stage g { cursor: pointer; }
-</style>
-</head>
-<body>
-<div id="bar">
-  <button type="button" id="done">Done</button>
-  <button type="button" id="saveNow">Save</button>
-  <button type="button" id="checkNow">Check</button>
-  <button type="button" id="reconnect">Reconnect</button>
-  <span class="zoom">
+"""
+
+_D2_EDITOR = r"""  <div id="editor">
+    <pre id="hl" aria-hidden="true"></pre>
+    <textarea id="src" spellcheck="false" wrap="off"></textarea>
+  </div>"""
+_D2_PREVIEW = r"""  <div id="preview"><div id="stage"></div></div>"""
+_D2_BAR_EXTRA = r"""  <span class="zoom">
     <button type="button" id="zoomOut" title="zoom out">−</button>
     <button type="button" id="zoomFit" title="fit diagram">Fit</button>
     <button type="button" id="zoomIn" title="zoom in">+</button>
     <span id="zoomPct">100%</span>
-  </span>
-  <span id="status">live preview — wheel / Ctrl± zoom, drag pan</span>
-</div>
-<div id="wrap">
-  <div id="editor">
-    <pre id="hl" aria-hidden="true"></pre>
-    <textarea id="src" spellcheck="false" wrap="off"></textarea>
-  </div>
-  <div id="gutter" role="separator" aria-orientation="vertical" title="drag to resize"></div>
-  <div id="preview"><div id="stage"></div></div>
-</div>
-<script type="module">
-import { D2 } from "https://esm.sh/@terrastruct/d2";
-
-const initial = __INITIAL_JSON__;
-const src = document.getElementById("src");
-const hl = document.getElementById("hl");
-const preview = document.getElementById("preview");
-const stage = document.getElementById("stage");
-const status = document.getElementById("status");
-const wrap = document.getElementById("wrap");
-const gutter = document.getElementById("gutter");
+  </span>"""
+_D2_REFS = r"""const stage = document.getElementById("stage");
 const zoomPct = document.getElementById("zoomPct");
-src.value = initial;
-
-function escHtml(s) {
+const hl = document.getElementById("hl");"""
+_D2_RENDER_JS = r"""function escHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
@@ -141,7 +83,7 @@ function highlightD2(text) {
     "^(direction|shape|label|style|class|classes|near|link|tooltip|icon|" +
       "constraint|width|height|vars|layers|scenarios|steps|opacity|fill|" +
       "stroke|font-color|font-size|bold|italic|underline|shadow|multiple|" +
-      "animated|filled)\\\\b"
+      "animated|filled)\\b"
   );
   let i = 0;
   let out = "";
@@ -149,7 +91,7 @@ function highlightD2(text) {
   while (i < n) {
     const ch = text[i];
     if (ch === "#") {
-      let j = text.indexOf("\\n", i);
+      let j = text.indexOf("\n", i);
       if (j < 0) j = n;
       out += '<span class="tok-c">' + escHtml(text.slice(i, j)) + "</span>";
       i = j;
@@ -158,7 +100,7 @@ function highlightD2(text) {
     if (ch === '"') {
       let j = i + 1;
       while (j < n && text[j] !== '"') {
-        if (text[j] === "\\\\") j++;
+        if (text[j] === "\\") j++;
         j++;
       }
       if (j < n) j++;
@@ -185,7 +127,7 @@ function highlightD2(text) {
     }
     if (/[A-Za-z_]/.test(ch)) {
       let j = i + 1;
-      while (j < n && /[\\w.-]/.test(text[j])) j++;
+      while (j < n && /[\w.-]/.test(text[j])) j++;
       const word = text.slice(i, j);
       const cls = kw.test(word) ? "tok-k" : "tok-i";
       out += '<span class="' + cls + '">' + escHtml(word) + "</span>";
@@ -207,7 +149,7 @@ function highlightD2(text) {
     out += escHtml(ch);
     i++;
   }
-  return out + "\\n";
+  return out + "\n";
 }
 
 function syncHlScroll() {
@@ -222,35 +164,11 @@ function paintHighlight() {
 
 paintHighlight();
 src.addEventListener("scroll", syncHlScroll);
-(function initSplit() {
-  const n = parseFloat(localStorage.getItem("anno-d2-split") || "50");
-  if (!isNaN(n)) wrap.style.setProperty("--split", Math.min(80, Math.max(20, n)) + "%");
-})();
-gutter.addEventListener("pointerdown", (ev) => {
-  ev.preventDefault();
-  gutter.classList.add("drag");
-  gutter.setPointerCapture(ev.pointerId);
-  const move = (e) => {
-    const r = wrap.getBoundingClientRect();
-    const pct = ((e.clientX - r.left) / r.width) * 100;
-    const clamped = Math.min(80, Math.max(20, pct));
-    wrap.style.setProperty("--split", clamped + "%");
-    try { localStorage.setItem("anno-d2-split", String(clamped)); } catch (err) {}
-  };
-  const up = () => {
-    gutter.classList.remove("drag");
-    gutter.removeEventListener("pointermove", move);
-    gutter.removeEventListener("pointerup", up);
-  };
-  gutter.addEventListener("pointermove", move);
-  gutter.addEventListener("pointerup", up);
-});
-
 const d2 = new D2();
 
 function extractSources(text) {
   const out = [];
-  const re = /```d2[ \\t]*\\n([\\s\\S]*?)(?:```|$)/gi;
+  const re = /```d2[ \t]*\n([\s\S]*?)(?:```|$)/gi;
   let m;
   while ((m = re.exec(text))) out.push(m[1]);
   if (out.length) return out;
@@ -258,8 +176,8 @@ function extractSources(text) {
 }
 
 function soften(src) {
-  const openRe = /^(?:[A-Za-z_][\\w.-]*(?:\\.[A-Za-z_][\\w.-]*)*\\s*:)?\\s*(\\|+)([A-Za-z][\\w-]*)?\\s*$/;
-  const lines = src.split("\\n");
+  const openRe = /^(?:[A-Za-z_][\w.-]*(?:\.[A-Za-z_][\w.-]*)*\s*:)?\s*(\|+)([A-Za-z][\w-]*)?\s*$/;
+  const lines = src.split("\n");
   const out = [];
   let delim = null;
   for (const line of lines) {
@@ -283,17 +201,16 @@ function soften(src) {
       continue;
     }
     if (/<->|<-|->|--/.test(stripped)) { out.push(line); continue; }
-    if (/^[A-Za-z_][\\w.-]*(\\.[A-Za-z_][\\w.-]*)*\\s*:/.test(stripped)) { out.push(line); continue; }
-    if (/^[A-Za-z_][\\w.-]*$/.test(stripped)) { out.push(line); continue; }
+    if (/^[A-Za-z_][\w.-]*(\.[A-Za-z_][\w.-]*)*\s*:/.test(stripped)) { out.push(line); continue; }
+    if (/^[A-Za-z_][\w.-]*$/.test(stripped)) { out.push(line); continue; }
     const indent = line.slice(0, line.length - line.trimStart().length);
     out.push(indent + "# " + stripped);
   }
-  return out.join("\\n");
+  return out.join("\n");
 }
 
 let token = 0;
 let lastGood = "";
-let renderTimer;
 let world = { x: 0, y: 0, w: 1, h: 1 };
 let cam = { x: 0, y: 0, w: 1, h: 1 };
 let fitted = false;
@@ -392,7 +309,7 @@ function fitView() {
 function compileErrText(e) {
   if (Array.isArray(e) && e[0] && e[0].errmsg) return e[0].errmsg;
   if (e && e.errmsg) return e.errmsg;
-  return String(e).split("\\n")[0];
+  return String(e).split("\n")[0];
 }
 
 async function compileOne(code) {
@@ -441,87 +358,10 @@ async function render() {
   }
 }
 
-function renderSoon() {
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(() => { render().catch(() => {}); }, 180);
-}
-
-let saveTimer;
-let lastDisk = initial;
-const fileKey = "__FILE_KEY__";
-const lsKey = "anno-d2:" + fileKey;
-
-function setStatus(msg, kind) {
-  status.textContent = msg;
-  status.dataset.kind = kind || "";
-}
-
-function stash(text) {
-  try { localStorage.setItem(lsKey, text); } catch (e) {}
-}
-
-async function postSave(text) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 4000);
-  try {
-    return await fetch("/save", {
-      method: "POST",
-      body: text,
-      cache: "no-store",
-      keepalive: true,
-      signal: ctrl.signal,
-    });
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-async function save() {
-  const text = src.value;
-  if (!text.trim() && lastDisk.trim()) {
-    setStatus("refusing to save empty over existing file — editor text kept", "err");
-    return;
-  }
-  stash(text);
-  let lastErr = "";
-  for (let i = 0; i < 3; i++) {
-    try {
-      const res = await postSave(text);
-      if (res.ok) {
-        lastDisk = text;
-        setStatus(src.value === text ? "saved to disk" : "saved to disk (newer edits still in editor)", "ok");
-        return;
-      }
-      lastErr = "HTTP " + res.status;
-    } catch (e) {
-      lastErr = (e && e.name === "AbortError") ? "timeout" : ((e && e.message) || String(e));
-    }
-    await new Promise((r) => setTimeout(r, 250 * (i + 1)));
-  }
-  setStatus(
-    "save failed (" + lastErr + "). Click Reconnect. Text is kept.",
-    "err"
-  );
-}
-
-src.addEventListener("input", () => {
-  paintHighlight();
-  setStatus("editing…", "");
-  renderSoon();
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(save, 400);
-});
-
-document.getElementById("saveNow").addEventListener("click", () => {
-  clearTimeout(saveTimer);
-  save();
-});
-document.getElementById("checkNow").addEventListener("click", async () => {
+"""
+_D2_INIT_JS = r"""document.getElementById("checkNow").addEventListener("click", async () => {
   await render();
   if (status.dataset.kind === "ok") setStatus("valid D2", "ok");
-});
-document.getElementById("reconnect").addEventListener("click", () => {
-  location.reload();
 });
 document.getElementById("zoomIn").addEventListener("click", () => {
   zoomTowardPointer(1.25);
@@ -556,7 +396,7 @@ function decodeD2Class(cls) {
     const pad = cls.length % 4 === 0 ? "" : "=".repeat(4 - (cls.length % 4));
     const b64 = (cls + pad).replace(/-/g, "+").replace(/_/g, "/");
     const bin = atob(b64);
-    if (!bin || /[\\x00-\\x08\\x0e-\\x1f]/.test(bin)) return null;
+    if (!bin || /[\x00-\x08\x0e-\x1f]/.test(bin)) return null;
     return bin;
   } catch (e) {
     return null;
@@ -565,14 +405,14 @@ function decodeD2Class(cls) {
 
 function looksLikeObjectId(id) {
   if (!id || id.length > 240) return false;
-  if (/^\\(.*\\)\\[\\d+\\]$/.test(id)) return true;
-  return /[A-Za-z_]/.test(id) && !/\\s{2,}/.test(id);
+  if (/^\(.*\)\[\d+\]$/.test(id)) return true;
+  return /[A-Za-z_]/.test(id) && !/\s{2,}/.test(id);
 }
 
 function objectIdFromNode(el) {
   while (el && el !== stage && el !== preview) {
     const cls = (el.getAttribute && el.getAttribute("class")) || "";
-    for (const c of cls.split(/\\s+/)) {
+    for (const c of cls.split(/\s+/)) {
       if (!c || SKIP_CLASS.has(c)) continue;
       const id = decodeD2Class(c);
       if (id && looksLikeObjectId(id)) return id;
@@ -585,14 +425,14 @@ function objectIdFromNode(el) {
 function findObjectSpan(text, objectId) {
   objectId = (objectId || "").trim();
   if (!objectId) return null;
-  const conn = objectId.match(/^\\((.+)\\)\\[\\d+\\]$/);
+  const conn = objectId.match(/^\((.+)\)\[\d+\]$/);
   if (conn) return findEdgeSpan(text, conn[1]);
   return findShapeSpan(text, objectId);
 }
 
 function keyRe(leaf) {
-  const esc = leaf.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
-  return new RegExp("^([ \\t]*)(?:\\"" + esc + "\\"|" + esc + ")(?=\\\\s*[:{]|\\\\s*$)", "m");
+  const esc = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp("^([ \t]*)(?:\"" + esc + "\"|" + esc + ")(?=\\s*[:{]|\\s*$)", "m");
 }
 
 function spanOfKey(text, match, leaf) {
@@ -642,8 +482,8 @@ function findEdgeSpan(text, inner) {
   if (left == null || right == null || !sep) return null;
   const leftLeaf = left.split(".").pop().trim().replace(/^"|"$/g, "");
   const rightLeaf = right.split(".").pop().trim().replace(/^"|"$/g, "");
-  const esc = (s) => s.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
-  const re = new RegExp("^([ \\t]*)" + esc(leftLeaf) + "\\\\s*" + esc(sep) + "\\\\s*" + esc(rightLeaf), "m");
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp("^([ \t]*)" + esc(leftLeaf) + "\\s*" + esc(sep) + "\\s*" + esc(rightLeaf), "m");
   const hit = re.exec(text);
   if (!hit) return null;
   return [hit.index + hit[1].length, hit.index + hit[0].length];
@@ -653,14 +493,14 @@ function snapEditor(start, end) {
   src.focus();
   src.setSelectionRange(start, end);
   const before = src.value.slice(0, start);
-  const line = before.split("\\n").length;
+  const line = before.split("\n").length;
   const cs = getComputedStyle(src);
   let lh = parseFloat(cs.lineHeight);
   if (!lh || cs.lineHeight === "normal") lh = (parseFloat(cs.fontSize) || 13) * 1.45;
   const pad = parseFloat(cs.paddingTop) || 0;
   src.scrollTop = Math.max(0, (line - 3) * lh - pad);
   syncHlScroll();
-  setStatus("snapped to " + src.value.slice(start, end).replace(/\\s+/g, " "), "ok");
+  setStatus("snapped to " + src.value.slice(start, end).replace(/\s+/g, " "), "ok");
 }
 
 function snapFromEvent(el) {
@@ -725,307 +565,62 @@ window.addEventListener("keydown", (ev) => {
     fitView();
   }
 });
-applyView();
+applyView();"""
+_D2_FOOTER = r"""setStatus("loading d2 wasm…", "");
+renderSoon();"""
 
-function applyDisk(text) {
-  if (text === src.value) {
-    lastDisk = text;
-    return;
-  }
-  if (text === lastDisk) return;
-  if (src.value !== lastDisk) stash(src.value);
-  lastDisk = text;
-  src.value = text;
-  paintHighlight();
-  setStatus("loaded from disk", "ok");
-  renderSoon();
-}
+LIVE_HTML = build_html(
+    title="anno d2",
+    kind="d2",
+    import_js='import { D2 } from "https://esm.sh/@terrastruct/d2";',
+    script_open='<script type="module">',
+    css=_D2_CSS,
+    bar='  <button type="button" id="checkNow">Check</button>',
+    bar_extra=_D2_BAR_EXTRA,
+    editor=_D2_EDITOR,
+    preview=_D2_PREVIEW,
+    status_hint="live preview — wheel / Ctrl± zoom, drag pan",
+    refs=_D2_REFS,
+    render_js=_D2_RENDER_JS,
+    init_js=_D2_INIT_JS,
+    input_hook="paintHighlight();",
+    disk_hook="paintHighlight();",
+    footer=_D2_FOOTER,
+)
 
-async function pollDisk() {
-  try {
-    const data = await (await fetch("/content")).json();
-    applyDisk(data.text);
-  } catch (e) {}
-}
-
-try {
-  const es = new EventSource("/events");
-  es.onmessage = (ev) => {
-    try { applyDisk(JSON.parse(ev.data).text); } catch (e) {}
-  };
-} catch (e) {}
-
-async function finish() {
-  clearTimeout(saveTimer);
-  await save();
-  try { await fetch("/done", { method: "POST" }); } catch (e) {}
-}
-
-document.getElementById("done").addEventListener("click", finish);
-setInterval(pollDisk, 1000);
-setStatus("loading d2 wasm…", "");
-renderSoon();
-</script>
-</body>
-</html>
-"""
+D2_LIVE = LiveConfig(
+    kind="d2",
+    html=LIVE_HTML,
+    module="anno.d2_live",
+    state_dir_env="ANNO_D2_LIVE_DIR",
+    state_subdir="d2-live",
+)
 
 
-def start_live_server(path: Path, preferred_port: int | None = None) -> tuple[ThreadingHTTPServer, int, Event]:
-    done = Event()
-    md_path = path
-    subscribers: list[queue.Queue[str]] = []
-    lock = threading.Lock()
-    ignore_text: list[str | None] = [None]
-
-    def _broadcast(text: str) -> None:
-        payload = json.dumps({"text": text})
-        with lock:
-            targets = list(subscribers)
-        for q in targets:
-            q.put(payload)
-
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, _fmt: str, *_args: object) -> None:
-            return
-
-        def _send(self, code: int, body: str | bytes, ctype: str = "text/plain; charset=utf-8") -> None:
-            data = body if isinstance(body, bytes) else body.encode()
-            self.send_response(code)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-
-        def do_GET(self) -> None:
-            route = self.path.split("?", 1)[0]
-            if route == "/content":
-                payload = json.dumps({"text": md_path.read_text(), "mtime": md_path.stat().st_mtime})
-                self._send(200, payload, "application/json; charset=utf-8")
-                return
-            if route == "/events":
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-cache")
-                self.send_header("Connection", "keep-alive")
-                self.end_headers()
-                q: queue.Queue[str] = queue.Queue()
-                with lock:
-                    subscribers.append(q)
-                try:
-                    while not done.is_set():
-                        try:
-                            msg = q.get(timeout=1.0)
-                        except queue.Empty:
-                            self.wfile.write(b": keepalive\n\n")
-                            self.wfile.flush()
-                            continue
-                        self.wfile.write(f"data: {msg}\n\n".encode())
-                        self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    pass
-                finally:
-                    with lock:
-                        if q in subscribers:
-                            subscribers.remove(q)
-                return
-            if route != "/":
-                self._send(404, "not found")
-                return
-            html = LIVE_HTML.replace("__INITIAL_JSON__", json.dumps(md_path.read_text())).replace(
-                "__FILE_KEY__", _state_file(md_path).stem
-            )
-            self._send(200, html, "text/html; charset=utf-8")
-
-        def do_POST(self) -> None:
-            length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(length)
-            route = self.path.split("?", 1)[0]
-            if route == "/save":
-                try:
-                    text = body.decode()
-                    existing = md_path.read_text() if md_path.is_file() else ""
-                    if not text.strip() and existing.strip():
-                        self._send(
-                            409,
-                            json.dumps({"ok": False, "error": "refusing empty overwrite"}),
-                            "application/json; charset=utf-8",
-                        )
-                        return
-                    md_path.write_text(text)
-                    ignore_text[0] = text
-                    self._send(
-                        200,
-                        json.dumps({"ok": True, "bytes": len(text)}),
-                        "application/json; charset=utf-8",
-                    )
-                except Exception as exc:
-                    self._send(
-                        500,
-                        json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}),
-                        "application/json; charset=utf-8",
-                    )
-            elif route == "/done":
-                done.set()
-                self._send(200, "ok")
-            else:
-                self._send(404, "not found")
-
-    httpd = None
-    if preferred_port:
-        try:
-            httpd = ThreadingHTTPServer(("127.0.0.1", preferred_port), Handler)
-        except OSError:
-            httpd = None
-    if httpd is None:
-        httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-
-    def _watch_file() -> None:
-        try:
-            last = md_path.read_text()
-        except OSError:
-            last = ""
-        while not done.wait(timeout=0.2):
-            try:
-                text = md_path.read_text()
-            except OSError:
-                continue
-            if text == last:
-                continue
-            last = text
-            if ignore_text[0] == text:
-                ignore_text[0] = None
-                continue
-            _broadcast(text)
-
-    threading.Thread(target=_watch_file, daemon=True).start()
-    return httpd, httpd.server_address[1], done
+def start_live_server(path: Path, preferred_port: int | None = None):
+    return _start(D2_LIVE, path, preferred_port)
 
 
-def has_browser() -> bool:
-    return any(shutil.which(name) for name in ("xdg-open", "firefox", "chromium", "brave", "google-chrome"))
+def _write_state(path: Path, port: int) -> None:
+    _write_state_impl(D2_LIVE, path, port)
 
 
-def _state_dir() -> Path:
-    raw = os.environ.get("ANNO_D2_LIVE_DIR")
-    return Path(raw) if raw else Path.home() / ".anno" / "d2-live"
-
-
-def _state_file(path: Path) -> Path:
-    key = hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:16]
-    return _state_dir() / f"{key}.json"
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+def preview_url_if_running(path: Path) -> str | None:
+    return _preview(D2_LIVE, path)
 
 
 def running_live_paths() -> list[Path]:
     """`.d2` files whose live sidecar is still up."""
-    folder = _state_dir()
-    if not folder.is_dir():
-        return []
-    found: list[Path] = []
-    for state in folder.glob("*.json"):
-        try:
-            data = json.loads(state.read_text())
-        except json.JSONDecodeError:
-            continue
-        raw = data.get("file")
-        if not isinstance(raw, str):
-            continue
-        path = Path(raw)
-        if path.is_file() and preview_url_if_running(path):
-            found.append(path)
-    return found
-
-
-def preview_url_if_running(path: Path) -> str | None:
-    state = _state_file(path)
-    if not state.is_file():
-        return None
-    try:
-        data = json.loads(state.read_text())
-    except json.JSONDecodeError:
-        return None
-    pid, port = data.get("pid"), data.get("port")
-    if not isinstance(pid, int) or not isinstance(port, int):
-        return None
-    if not _pid_alive(pid):
-        return None
-    url = f"http://127.0.0.1:{port}/"
-    try:
-        urlopen(url + "content", timeout=1)
-    except (OSError, URLError):
-        return None
-    return url
-
-
-def _write_state(path: Path, port: int) -> None:
-    state = _state_file(path)
-    state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(json.dumps({"pid": os.getpid(), "port": port, "file": str(path.resolve())}))
-
-
-def _clear_state(path: Path) -> None:
-    _state_file(path).unlink(missing_ok=True)
-
-
-def _stale_port(path: Path) -> int | None:
-    state = _state_file(path)
-    if not state.is_file():
-        return None
-    try:
-        port = json.loads(state.read_text()).get("port")
-    except json.JSONDecodeError:
-        return None
-    return port if isinstance(port, int) else None
+    return _running(D2_LIVE)
 
 
 def serve_until_done(path: Path) -> str:
-    httpd, port, done = start_live_server(path, preferred_port=_stale_port(path))
-    url = f"http://127.0.0.1:{port}/"
-    _write_state(path, port)
-    print(f"preview: {url}", flush=True)
-    webbrowser.open(url)
-    try:
-        done.wait()
-    finally:
-        _clear_state(path)
-        httpd.shutdown()
-        httpd.server_close()
-    return url
+    return _serve(D2_LIVE, path)
 
 
 def run_live_editor(path: Path) -> bool:
     """Open (or reuse) a detached live preview. Returns immediately."""
-    if not has_browser():
-        return False
-    path = path.resolve()
-    url = preview_url_if_running(path)
-    if url:
-        webbrowser.open(url)
-        print(f"preview: {url}  (already running; disk edits rerender)")
-        return True
-    subprocess.Popen(
-        [sys.executable, "-m", "anno.d2_live", str(path)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    deadline = time.monotonic() + 5.0
-    while time.monotonic() < deadline:
-        url = preview_url_if_running(path)
-        if url:
-            print(f"preview: {url}  (stays open; disk edits rerender)")
-            return True
-        time.sleep(0.05)
-    return False
+    return _run(D2_LIVE, path)
 
 
 def main() -> None:

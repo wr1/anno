@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import subprocess
@@ -6,8 +5,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from anno.activity_log import log_activity, read_activity
 from anno.constants import DEFAULT_LOG_FILE, DEFAULT_PARA_NOTES_DIR
-from anno.log_util import log_activity
 
 
 def _launch_paraview(mesh_paths: list[Path], notes_dir: str) -> None:
@@ -29,9 +28,7 @@ def _launch_paraview(mesh_paths: list[Path], notes_dir: str) -> None:
 
 
 def _last_para_mesh(name: Optional[str] = None) -> Optional[Path]:
-    if not DEFAULT_LOG_FILE.exists():
-        return None
-    entries = [json.loads(line) for line in DEFAULT_LOG_FILE.read_text().splitlines() if line.strip()]
+    entries = read_activity(DEFAULT_LOG_FILE)
     para = [e for e in entries if e.get("action") == "para_open"]
     if name:
         para = [e for e in para if Path(e["file"]).stem == name]

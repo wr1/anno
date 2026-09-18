@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from anno.constants import DEFAULT_D2_DIR, DEFAULT_MERMAID_DIR, DEFAULT_MIND_DIR, DEFAULT_NOTES_DIR
+from anno.constants import DEFAULT_D2_DIR, DEFAULT_DRAW_DIR, DEFAULT_MERMAID_DIR, DEFAULT_MIND_DIR
 
 # Distinct hues so ink / mind / mermaid / d2 scan as separate types.
 _TYPE_STYLE = {
@@ -19,23 +19,23 @@ def listed_files(directory: Path, pattern: str) -> list[Path]:
     return sorted(directory.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
 
 
-def open_invocation(sub: str, path: Path) -> str:
-    return f"{sub} {path.stem}"
+def open_invocation(kind: str, path: Path) -> str:
+    return f"{kind} {path.stem}"
 
 
-def type_style(sub: str) -> str:
-    return _TYPE_STYLE[sub]
+def type_style(kind: str) -> str:
+    return _TYPE_STYLE[kind]
 
 
 @dataclass(frozen=True)
 class ListEntry:
-    sub: str
+    kind: str
     path: Path
     mtime: float
 
     @property
     def open_cmd(self) -> str:
-        return open_invocation(self.sub, self.path)
+        return open_invocation(self.kind, self.path)
 
 
 def collect_entries(
@@ -45,20 +45,20 @@ def collect_entries(
     d2_dir: str = str(DEFAULT_D2_DIR),
 ) -> list[ListEntry]:
     entries: list[ListEntry] = []
-    for sub, directory, pattern in (
+    for kind, directory, pattern in (
         ("ink", notes_dir, "*.svg"),
         ("mind", mind_dir, "*.minder"),
         ("mermaid", mermaid_dir, "*.md"),
         ("d2", d2_dir, "*.d2"),
     ):
         for path in listed_files(Path(directory), pattern):
-            entries.append(ListEntry(sub, path, path.stat().st_mtime))
+            entries.append(ListEntry(kind, path, path.stat().st_mtime))
     entries.sort(key=lambda e: e.mtime, reverse=True)
     return entries
 
 
 def cmd_list(
-    notes_dir: str = str(DEFAULT_NOTES_DIR),
+    notes_dir: str = str(DEFAULT_DRAW_DIR),
     mind_dir: str = str(DEFAULT_MIND_DIR),
     mermaid_dir: str = str(DEFAULT_MERMAID_DIR),
     d2_dir: str = str(DEFAULT_D2_DIR),
@@ -82,7 +82,7 @@ def cmd_list(
         mtime = datetime.fromtimestamp(e.mtime).strftime("%Y-%m-%d %H:%M")
         size_kb = st.st_size // 1024
         uri = e.path.resolve().as_uri()
-        color = type_style(e.sub)
+        color = type_style(e.kind)
         t.add_row(
             mtime,
             f"[{color}]{e.open_cmd}[/{color}]",

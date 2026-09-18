@@ -1,27 +1,21 @@
-import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from textwrap import dedent
 
+from anno.activity_log import log_activity
 from anno.clipboard import copy_text_to_clipboard
 from anno.constants import DEFAULT_MERMAID_DIR
-from anno.log_util import log_activity
+from anno.editor import OpenResult, editor_argv, stub
 from anno.mermaid_live import run_live_editor
 
 # Later: anno dot / neato — Graphviz as a sibling group, same find-or-create + editor rhythm.
 STYLES = ("flowchart", "sequence", "state", "class")
 
 
-def _stub(body: str) -> str:
-    return dedent(body).lstrip("\n")
-
-
 _TEMPLATES = {
-    "flowchart": _stub("""
+    "flowchart": stub("""
         # {title}
 
         ```mermaid
@@ -39,7 +33,7 @@ _TEMPLATES = {
           group2 --> outputs
         ```
     """),
-    "sequence": _stub("""
+    "sequence": stub("""
         # {title}
 
         ```mermaid
@@ -49,7 +43,7 @@ _TEMPLATES = {
           API-->>User: response
         ```
     """),
-    "state": _stub("""
+    "state": stub("""
         # {title}
 
         ```mermaid
@@ -59,7 +53,7 @@ _TEMPLATES = {
           Open --> Closed
         ```
     """),
-    "class": _stub("""
+    "class": stub("""
         # {title}
 
         ```mermaid
@@ -93,18 +87,6 @@ def ensure_mermaid_file(path: Path, style: str, title: str) -> bool:
     return True
 
 
-def editor_argv(path: Path) -> list[str]:
-    """Fallback when the live mermaid.js preview cannot run."""
-    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
-    if editor:
-        return [editor, str(path)]
-    if shutil.which("gvim"):
-        return ["gvim", "--nofork", str(path)]
-    if shutil.which("code"):
-        return ["code", "--wait", str(path)]
-    raise RuntimeError("no editor: set $VISUAL/$EDITOR, or install gvim or VS Code")
-
-
 def open_mermaid(
     style: str,
     name: str = "",
@@ -112,45 +94,50 @@ def open_mermaid(
     *,
     run_editor: Callable[[list[str]], object] | None = None,
     copy_text: Callable[[str], object] | None = None,
-) -> Path:
+) -> OpenResult:
     name = name or ""
     out_dir = Path(notes_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = mermaid_path(out_dir, style, name)
     created = ensure_mermaid_file(path, style, path.stem)
-    print(f"{'created' if created else 'opening'}: {path}")
-    if run_editor is not None:
-        try:
-            argv = editor_argv(path)
-        except RuntimeError as exc:
-            sys.exit(f"error  : {exc}")
-        run_editor(argv)
-    elif not run_live_editor(path):
-        try:
-            argv = editor_argv(path)
-        except RuntimeError as exc:
-            sys.exit(f"error  : {exc}")
-        subprocess.run(argv)
+    messages = [f"{'created' if created else 'opening'}: {path}"]
+    try:
+        if run_editor is not None:
+            run_editor(editor_argv(path))
+        elif not run_live_editor(path):
+            subprocess.run(editor_argv(path))
+    except RuntimeError as exc:
+        messages.append(f"error  : {exc}")
+        return OpenResult(path, created, copied=False, messages=tuple(messages), ok=False, exit_code=1)
     text = path.read_text() if path.exists() else ""
     (copy_text or copy_text_to_clipboard)(text)
     log_activity("mermaid_edit", path)
-    print(f"saved  : {path}")
-    print("copied : markdown to clipboard")
-    print("note   : preview stays open and rerenders when the file changes")
-    return path
+    messages += [
+        f"saved  : {path}",
+        "copied : markdown to clipboard",
+        "note   : preview stays open and rerenders when the file changes",
+    ]
+    return OpenResult(path, created, copied=True, messages=tuple(messages))
+
+
+def _emit(result: OpenResult) -> None:
+    for line in result.messages:
+        print(line)
+    if not result.ok:
+        sys.exit(result.exit_code)
 
 
 def cmd_mermaid_flowchart(name: str = "", notes_dir: str = str(DEFAULT_MERMAID_DIR)) -> None:
-    open_mermaid("flowchart", name, notes_dir)
+    _emit(open_mermaid("flowchart", name, notes_dir))
 
 
 def cmd_mermaid_sequence(name: str = "", notes_dir: str = str(DEFAULT_MERMAID_DIR)) -> None:
-    open_mermaid("sequence", name, notes_dir)
+    _emit(open_mermaid("sequence", name, notes_dir))
 
 
 def cmd_mermaid_state(name: str = "", notes_dir: str = str(DEFAULT_MERMAID_DIR)) -> None:
-    open_mermaid("state", name, notes_dir)
+    _emit(open_mermaid("state", name, notes_dir))
 
 
 def cmd_mermaid_class(name: str = "", notes_dir: str = str(DEFAULT_MERMAID_DIR)) -> None:
-    open_mermaid("class", name, notes_dir)
+    _emit(open_mermaid("class", name, notes_dir))

@@ -3,6 +3,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from anno.activity_log import log_activity
 from anno.clipboard import copy_text_to_clipboard
 from anno.constants import (
     DEFAULT_FS_DEPTH,
@@ -10,7 +11,6 @@ from anno.constants import (
     DEFAULT_NOTES_ROOT,
     DEFAULT_PLANS_DIR,
 )
-from anno.log_util import log_activity
 from anno.mind.folder import folder_has_content, folder_to_tree, tree_to_folder
 from anno.mind.format import write_minder_archive
 from anno.mind.process import (

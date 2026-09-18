@@ -93,7 +93,7 @@ def test_smoke_every_leaf_help_and_json():
 
 def test_all_workflows_smoke(tmp_path: Path, monkeypatch, capsys):
     log_file = tmp_path / "log.jsonl"
-    monkeypatch.setattr("anno.log_util.DEFAULT_LOG_FILE", log_file)
+    monkeypatch.setattr("anno.activity_log.DEFAULT_LOG_FILE", log_file)
     _smoke_ink(tmp_path, monkeypatch)
     _smoke_mind(tmp_path, monkeypatch)
     _smoke_mermaid(tmp_path, monkeypatch)
@@ -188,13 +188,14 @@ def _smoke_mermaid(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("VISUAL", "true")
     mer = tmp_path / "mermaid"
     for style in STYLES:
-        path = open_mermaid(
+        result = open_mermaid(
             style,
             f"smoke-{style}",
             notes_dir=str(mer),
             run_editor=lambda argv: None,
             copy_text=lambda text: None,
         )
+        path = result.path
         assert path.is_file()
         assert "```mermaid" in path.read_text()
     _ping_live(start_live_server, mer / "smoke-flowchart.md", "anno mermaid")
@@ -206,13 +207,14 @@ def _smoke_d2(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setenv("VISUAL", "true")
     d2dir = tmp_path / "d2"
-    path = open_d2(
+    opened = open_d2(
         "smoke",
         notes_dir=str(d2dir),
         no_check=True,
         run_editor=lambda argv: None,
         copy_text=lambda text: None,
     )
+    path = opened.path
     assert path.is_file()
     assert "direction: right" in path.read_text()
     result = check_d2("smoke", notes_dir=str(d2dir), validate=lambda src: (True, "ok"))

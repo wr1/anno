@@ -5,12 +5,12 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from anno.activity_log import log_activity
 from anno.clipboard import copy_png_to_clipboard
-from anno.constants import DEFAULT_NOTES_DIR
-from anno.log_util import log_activity
+from anno.constants import DEFAULT_DRAW_DIR
 
 
-def cmd_cam(notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
+def cmd_cam(notes_dir: str = str(DEFAULT_DRAW_DIR)) -> None:
     for tool in ("ffplay", "ffmpeg", "convert"):
         if not shutil.which(tool):
             sys.exit(f"cam requires {tool!r} on PATH (install ffmpeg + imagemagick)")

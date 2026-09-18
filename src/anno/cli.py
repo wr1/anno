@@ -5,11 +5,11 @@ from anno.activity_log import cmd_log
 from anno.cam import cmd_cam
 from anno.constants import (
     DEFAULT_D2_DIR,
+    DEFAULT_DRAW_DIR,
     DEFAULT_FS_DEPTH,
     DEFAULT_LOG_FILE,
     DEFAULT_MERMAID_DIR,
     DEFAULT_MIND_DIR,
-    DEFAULT_NOTES_DIR,
     DEFAULT_NOTES_ROOT,
     DEFAULT_PARA_NOTES_DIR,
     DEFAULT_PLANS_DIR,
@@ -45,8 +45,16 @@ _notes_option = option(
     flags=["--notes-dir", "-d"],
     dest="notes_dir",
     arg_type=str,
-    default=str(DEFAULT_NOTES_DIR),
-    help="Directory to save SVGs",
+    default=str(DEFAULT_DRAW_DIR),
+    help="Directory for Inkscape SVGs and PNGs",
+    sort_key=10,
+)
+_cam_notes_option = option(
+    flags=["--notes-dir", "-d"],
+    dest="notes_dir",
+    arg_type=str,
+    default=str(DEFAULT_DRAW_DIR),
+    help="Directory to save webcam captures",
     sort_key=10,
 )
 _screenshots_option = option(
@@ -325,7 +333,7 @@ app.commands.append(
             "copies enhanced PNG to clipboard. Requires ffmpeg + imagemagick."
         ),
         callback=cmd_cam,
-        options=[_notes_option],
+        options=[_cam_notes_option],
     )
 )
 

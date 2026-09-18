@@ -23,7 +23,7 @@ def test_listed_files_mermaid_md_newest_first(tmp_path: Path):
     assert "skip.txt" not in names
 
 
-def test_open_invocation_is_sub_and_stem():
+def test_open_invocation_is_kind_and_stem():
     from anno.listing import open_invocation
 
     assert open_invocation("ink", Path("notes/draw/myfigure.svg")) == "ink myfigure"
@@ -54,11 +54,11 @@ def test_collect_entries_sorted_by_mtime_mixed_types(tmp_path: Path):
     os.utime(ink, (3_000_000, 3_000_000))
     os.utime(diagram, (4_000_000, 4_000_000))
     entries = collect_entries(str(draw), str(mind), str(mer), str(d2))
-    assert [e.sub for e in entries] == ["d2", "ink", "mermaid", "mind"]
+    assert [e.kind for e in entries] == ["d2", "ink", "mermaid", "mind"]
     assert [e.open_cmd for e in entries] == ["d2 flow", "ink fig", "mermaid pipe", "mind map"]
 
 
-def test_type_style_differs_by_sub():
+def test_type_style_differs_by_kind():
     from anno.listing import type_style
 
     assert type_style("ink") != type_style("mind")

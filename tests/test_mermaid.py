@@ -85,7 +85,7 @@ def test_ensure_creates_only_when_missing(tmp_path: Path):
 def test_editor_prefers_visual_then_editor(monkeypatch):
     monkeypatch.setenv("VISUAL", "hx")
     monkeypatch.setenv("EDITOR", "vim")
-    monkeypatch.setattr("anno.mermaid.shutil.which", lambda name: None)
+    monkeypatch.setattr("anno.editor.shutil.which", lambda name: None)
     assert editor_argv(Path("x.md")) == ["hx", "x.md"]
     monkeypatch.delenv("VISUAL")
     assert editor_argv(Path("x.md")) == ["vim", "x.md"]
@@ -94,9 +94,9 @@ def test_editor_prefers_visual_then_editor(monkeypatch):
 def test_editor_falls_back_to_gvim_then_code(monkeypatch):
     monkeypatch.delenv("VISUAL", raising=False)
     monkeypatch.delenv("EDITOR", raising=False)
-    monkeypatch.setattr("anno.mermaid.shutil.which", lambda name: "/usr/bin/gvim" if name == "gvim" else None)
+    monkeypatch.setattr("anno.editor.shutil.which", lambda name: "/usr/bin/gvim" if name == "gvim" else None)
     assert editor_argv(Path("x.md")) == ["gvim", "--nofork", "x.md"]
-    monkeypatch.setattr("anno.mermaid.shutil.which", lambda name: "/usr/bin/code" if name == "code" else None)
+    monkeypatch.setattr("anno.editor.shutil.which", lambda name: "/usr/bin/code" if name == "code" else None)
     assert editor_argv(Path("x.md")) == ["code", "--wait", "x.md"]
 
 
@@ -109,14 +109,16 @@ def test_open_mermaid_creates_edits_and_copies(tmp_path: Path, monkeypatch):
         launched.append(argv)
         Path(argv[-1]).write_text("# edited\n\n```mermaid\nflowchart TD\n  a --> b\n```\n")
 
-    path = open_mermaid(
+    result = open_mermaid(
         "flowchart",
         "pipeline",
         notes_dir=str(tmp_path),
         run_editor=fake_editor,
         copy_text=copied.append,
     )
+    path = result.path
     assert path == tmp_path / "pipeline.md"
+    assert result.copied
     assert launched[0][-1] == str(path)
     assert copied == [path.read_text()]
     assert "```mermaid" in path.read_text()

@@ -7,9 +7,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from anno.activity_log import log_activity
 from anno.clipboard import copy_text_to_clipboard
-from anno.constants import DEFAULT_NOTES_ROOT, MINDER, MINDER_GUI_MIN_ELAPSED
-from anno.log_util import log_activity
+from anno.constants import DEFAULT_NOTES_ROOT, MINDER_EXEC, MINDER_GUI_MIN_ELAPSED
 from anno.mind.format import ensure_minder_archive
 from anno.mind.tree import parse_bullets_markdown, tree_to_numbered_markdown
 
@@ -35,7 +35,7 @@ def existing_minder_pids() -> list[int]:
         if not cmdline:
             continue
         argv0 = cmdline.split(b"\x00", 1)[0].decode(errors="replace")
-        if Path(argv0).name == MINDER:
+        if Path(argv0).name == MINDER_EXEC:
             pids.append(int(entry.name))
     return pids
 
@@ -153,7 +153,7 @@ def minder_export_markdown(minder_file: Path, md_file: Path) -> None:
     # got written. A silent failure here used to leave smart-sync thinking
     # the user emptied the tree, which proceeded to wipe the source folder.
     result = subprocess.run(
-        [MINDER, "--export=markdown", str(minder_file), str(md_file)],
+        [MINDER_EXEC, "--export=markdown", str(minder_file), str(md_file)],
         capture_output=True,
     )
     if not md_file.exists() or not md_file.read_text().strip():
@@ -177,7 +177,7 @@ def minder_launch_gui(minder_file: Path, force: bool = False) -> None:
     # Minder keeps the process alive after closing its window (intermittent
     # bug under GTK4/Wayland), Ctrl-C terminates Minder cleanly and we still
     # run the markdown export from the saved .minder file.
-    proc = subprocess.Popen([MINDER, str(minder_file)])
+    proc = subprocess.Popen([MINDER_EXEC, str(minder_file)])
     sigint_count = 0
     try:
         while True:

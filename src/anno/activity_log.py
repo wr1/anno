@@ -6,6 +6,33 @@ from typing import Optional
 from anno.constants import DEFAULT_LOG_FILE
 
 
+def log_activity(action: str, path: Path) -> None:
+    """Append one JSONL activity record for `path`."""
+    DEFAULT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "ts": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "action": action,
+        "file": str(path.resolve()),
+        "type": path.suffix.lstrip("."),
+    }
+    with DEFAULT_LOG_FILE.open("a") as fh:
+        fh.write(json.dumps(entry) + "\n")
+
+
+def read_activity(log_file: Optional[Path] = None) -> list[dict]:
+    """Parse the JSONL activity log; missing file and bad lines are skipped."""
+    path = log_file or DEFAULT_LOG_FILE
+    if not path.exists():
+        return []
+    entries: list[dict] = []
+    for raw in path.read_text().splitlines():
+        try:
+            entries.append(json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+    return entries
+
+
 def cmd_log(
     date: Optional[str] = None,
     log_file: str = str(DEFAULT_LOG_FILE),
@@ -20,14 +47,7 @@ def cmd_log(
         print("No activity log found.")
         return
 
-    entries = []
-    for raw in log_path.read_text().splitlines():
-        try:
-            e = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if e.get("ts", "").startswith(date):
-            entries.append(e)
+    entries = [e for e in read_activity(log_path) if e.get("ts", "").startswith(date)]
 
     console = Console()
 

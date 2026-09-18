@@ -6,15 +6,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from anno.activity_log import log_activity
 from anno.clipboard import copy_png_to_clipboard
 from anno.constants import (
+    DEFAULT_DRAW_DIR,
     DEFAULT_FONT_SIZE,
-    DEFAULT_NOTES_DIR,
     DEFAULT_SCREENSHOTS_DIR,
     EXPORT_DPI,
     INKSCAPE_ENV,
 )
-from anno.log_util import log_activity
 
 # Inkscape registers sodipodi as sodipodi-0.dtd. sodipodi-0.0.dtd is a different
 # URI, so libxml remaps the prefix to sodipodi0 and load warns "unknown type".
@@ -106,7 +106,7 @@ def _make_blank_svg(path: Path, w: int = 1920, h: int = 1080) -> None:
     path.write_text(_svg_document(w, h))
 
 
-def cmd_ink_open(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
+def cmd_ink_open(name: str = "", notes_dir: str = str(DEFAULT_DRAW_DIR)) -> None:
     """Find-or-create: open <name>.svg if it exists, create a blank one if it
     doesn't, or open a fresh timestamped scratch SVG when no name is given."""
     out_dir = Path(notes_dir)
@@ -123,18 +123,12 @@ def cmd_ink_open(name: str = "", notes_dir: str = str(DEFAULT_NOTES_DIR)) -> Non
     _run_inkscape_and_export(svg)
 
 
-def cmd_ink_fig(file: Optional[str] = None, notes_dir: str = str(DEFAULT_NOTES_DIR)) -> None:
-    if file is None:
-        scr_dir = DEFAULT_SCREENSHOTS_DIR
-        pngs = sorted(scr_dir.glob("*.png"), key=lambda p: p.stat().st_mtime)
-        if not pngs:
-            sys.exit(f"No PNGs found in {scr_dir}")
-        img_path = pngs[-1].resolve()
-        print(f"latest : {img_path.name}")
-    else:
-        img_path = Path(file).resolve()
-        if not img_path.exists():
-            sys.exit(f"File not found: {img_path}")
+def cmd_ink_fig(file: Optional[str] = None, notes_dir: str = str(DEFAULT_DRAW_DIR)) -> None:
+    if not file:
+        sys.exit("error  : anno ink fig needs an image file (use `anno ink screen` for screenshots)")
+    img_path = Path(file).resolve()
+    if not img_path.exists():
+        sys.exit(f"File not found: {img_path}")
 
     out_dir = Path(notes_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -149,7 +143,7 @@ def cmd_ink_fig(file: Optional[str] = None, notes_dir: str = str(DEFAULT_NOTES_D
 
 
 def cmd_ink_screen(
-    notes_dir: str = str(DEFAULT_NOTES_DIR),
+    notes_dir: str = str(DEFAULT_DRAW_DIR),
     screenshots_dir: str = str(DEFAULT_SCREENSHOTS_DIR),
 ) -> None:
     scr_dir = Path(screenshots_dir)

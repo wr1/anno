@@ -20,7 +20,6 @@ from anno.mind.format import (
     write_minder_archive,
 )
 from anno.mind.process import minder_export_markdown, minder_launch_gui
-from anno.mind.styles import make_minder_file
 from anno.mind.templates import seed_minder
 from anno.mind.tree import MindNode, tree_to_minder_xml
 
@@ -140,7 +139,7 @@ def test_seed_and_empty_file_are_archives(tmp_path: Path) -> None:
     assert 'version="2.0.3"' in xml
 
     empty = tmp_path / "empty.minder"
-    make_minder_file(empty)
+    write_minder_archive(empty, MAP_XML)
     assert is_minder2_archive(empty)
     assert "<nodes/>" in read_map_xml(empty)
 

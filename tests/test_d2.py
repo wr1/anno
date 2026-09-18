@@ -4,6 +4,7 @@ from pathlib import Path
 
 from anno.d2 import (
     check_d2,
+    check_lines,
     compile_d2,
     d2_path,
     d2_template,
@@ -53,7 +54,7 @@ def test_ensure_creates_only_when_missing(tmp_path: Path):
 def test_editor_prefers_visual_then_editor(monkeypatch):
     monkeypatch.setenv("VISUAL", "hx")
     monkeypatch.setenv("EDITOR", "vim")
-    monkeypatch.setattr("anno.d2.shutil.which", lambda name: None)
+    monkeypatch.setattr("anno.editor.shutil.which", lambda name: None)
     assert editor_argv(Path("x.d2")) == ["hx", "x.d2"]
     monkeypatch.delenv("VISUAL")
     assert editor_argv(Path("x.d2")) == ["vim", "x.d2"]
@@ -62,9 +63,9 @@ def test_editor_prefers_visual_then_editor(monkeypatch):
 def test_editor_falls_back_to_gvim_then_code(monkeypatch):
     monkeypatch.delenv("VISUAL", raising=False)
     monkeypatch.delenv("EDITOR", raising=False)
-    monkeypatch.setattr("anno.d2.shutil.which", lambda name: "/usr/bin/gvim" if name == "gvim" else None)
+    monkeypatch.setattr("anno.editor.shutil.which", lambda name: "/usr/bin/gvim" if name == "gvim" else None)
     assert editor_argv(Path("x.d2")) == ["gvim", "--nofork", "x.d2"]
-    monkeypatch.setattr("anno.d2.shutil.which", lambda name: "/usr/bin/code" if name == "code" else None)
+    monkeypatch.setattr("anno.editor.shutil.which", lambda name: "/usr/bin/code" if name == "code" else None)
     assert editor_argv(Path("x.d2")) == ["code", "--wait", "x.d2"]
 
 
@@ -77,14 +78,16 @@ def test_open_d2_creates_edits_and_copies(tmp_path: Path, monkeypatch):
         launched.append(argv)
         Path(argv[-1]).write_text("# edited\n\ninputs -> outputs\n")
 
-    path = open_d2(
+    result = open_d2(
         "pipeline",
         notes_dir=str(tmp_path),
         no_check=True,
         run_editor=fake_editor,
         copy_text=copied.append,
     )
+    path = result.path
     assert path == tmp_path / "pipeline.d2"
+    assert result.copied
     assert launched[0][-1] == str(path)
     assert copied == [path.read_text()]
     assert "inputs -> outputs" in path.read_text()
@@ -104,7 +107,7 @@ def test_open_d2_does_not_overwrite_existing(tmp_path: Path, monkeypatch):
     assert existing.read_text() == "# keep me\n"
 
 
-def test_check_ok_softens_notes_then_validates(tmp_path: Path, capsys):
+def test_check_ok_softens_notes_then_validates(tmp_path: Path):
     (tmp_path / "ok.d2").write_text("a -> b\nwhere matdb?\n")
     seen: list[str] = []
 
@@ -118,7 +121,7 @@ def test_check_ok_softens_notes_then_validates(tmp_path: Path, capsys):
     assert result.mode == "preview"
     assert "# where matdb?" in seen[0]
     assert "where matdb?" not in [ln.strip() for ln in seen[0].splitlines() if not ln.strip().startswith("#")]
-    out = capsys.readouterr().out
+    out = "\n".join(check_lines(result))
     assert "ok.d2" in out
     assert "preview" in out
     assert "valid D2" in out
@@ -139,7 +142,7 @@ def test_check_strict_validates_raw_file(tmp_path: Path):
     assert "# where matdb?" not in seen[0]
 
 
-def test_check_prints_compiler_errors(tmp_path: Path, capsys):
+def test_check_reports_compiler_errors(tmp_path: Path):
     (tmp_path / "bad.d2").write_text("a -> {\n")
     d2_err = "err: oss.terrastruct.com/d2/d2cli.validateCmd: 1:6: maps must be terminated with }"
     result = check_d2(
@@ -149,17 +152,17 @@ def test_check_prints_compiler_errors(tmp_path: Path, capsys):
     )
     assert result.ok is False
     assert result.exit_code == 1
-    out = capsys.readouterr().out
+    out = "\n".join(check_lines(result))
     assert "1:6: maps must be terminated with }" in out
     assert "oss.terrastruct.com" not in out
 
 
-def test_check_missing_file_does_not_create(tmp_path: Path, capsys):
+def test_check_missing_file_does_not_create(tmp_path: Path):
     result = check_d2("nope", notes_dir=str(tmp_path))
     assert result.ok is False
     assert result.exit_code == 2
     assert not (tmp_path / "nope.d2").exists()
-    assert "not found" in capsys.readouterr().out.lower()
+    assert "not found" in "\n".join(check_lines(result)).lower()
 
 
 def test_check_accepts_existing_path(tmp_path: Path):
@@ -179,7 +182,7 @@ def test_check_accepts_existing_path(tmp_path: Path):
 
 
 def test_validate_d2_reports_missing_binary(monkeypatch):
-    monkeypatch.setattr("anno.d2.shutil.which", lambda name: None)
+    monkeypatch.setattr("anno.editor.shutil.which", lambda name: None)
     ok, msg = validate_d2("a -> b\n")
     assert ok is False
     assert "PATH" in msg
@@ -216,23 +219,20 @@ def test_compile_d2_catches_markdown_html_that_validate_accepts():
     assert "malformed Markdown" in cmsg or "gb10-lan" in cmsg
 
 
-def test_open_refuses_when_compile_fails(tmp_path: Path, capsys):
+def test_open_refuses_when_compile_fails(tmp_path: Path):
     (tmp_path / "bad.d2").write_text("a -> b\n")
     launched: list[object] = []
-    try:
-        open_d2(
-            "bad",
-            notes_dir=str(tmp_path),
-            run_editor=launched.append,
-            copy_text=lambda text: None,
-            validate=lambda src: (False, "1:1: malformed Markdown: element <x>"),
-        )
-    except SystemExit as exc:
-        assert exc.code == 1
-    else:
-        raise AssertionError("expected SystemExit")
+    result = open_d2(
+        "bad",
+        notes_dir=str(tmp_path),
+        run_editor=launched.append,
+        copy_text=lambda text: None,
+        validate=lambda src: (False, "1:1: malformed Markdown: element <x>"),
+    )
+    assert result.ok is False
+    assert result.exit_code == 1
     assert launched == []
-    assert "refusing to launch" in capsys.readouterr().out
+    assert "refusing to launch" in "\n".join(result.messages)
 
 
 def test_open_force_launches_when_compile_fails(tmp_path: Path):

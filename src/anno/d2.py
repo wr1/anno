@@ -1,4 +1,3 @@
-import os
 import re
 import shutil
 import subprocess
@@ -7,20 +6,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from textwrap import dedent
 
+from anno.activity_log import log_activity
 from anno.clipboard import copy_text_to_clipboard
 from anno.constants import DEFAULT_D2_DIR
 from anno.d2_dump import sources_for_preview
 from anno.d2_live import run_live_editor, running_live_paths
-from anno.log_util import log_activity
+from anno.editor import OpenResult, editor_argv, stub
 
-
-def _stub(body: str) -> str:
-    return dedent(body).lstrip("\n")
-
-
-_TEMPLATE = _stub("""
+_TEMPLATE = stub("""
     # {title}
 
     direction: right
@@ -57,72 +51,7 @@ def ensure_d2_file(path: Path, title: str) -> bool:
     return True
 
 
-def editor_argv(path: Path) -> list[str]:
-    """Fallback when the live D2 preview cannot run."""
-    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
-    if editor:
-        return [editor, str(path)]
-    if shutil.which("gvim"):
-        return ["gvim", "--nofork", str(path)]
-    if shutil.which("code"):
-        return ["code", "--wait", str(path)]
-    raise RuntimeError("no editor: set $VISUAL/$EDITOR, or install gvim or VS Code")
-
-
-def open_d2(
-    name: str = "",
-    notes_dir: str = str(DEFAULT_D2_DIR),
-    *,
-    force: bool = False,
-    no_check: bool = False,
-    run_editor: Callable[[list[str]], object] | None = None,
-    copy_text: Callable[[str], object] | None = None,
-    validate: Callable[[str], tuple[bool, str]] | None = None,
-) -> Path:
-    name = name or ""
-    out_dir = Path(notes_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = d2_path(out_dir, name)
-    created = ensure_d2_file(path, path.stem)
-    print(f"{'created' if created else 'opening'}: {path}")
-    if not no_check:
-        result = check_d2(str(path), str(out_dir), validate=validate)
-        missing = any("PATH" in m for m in result.messages)
-        if missing:
-            print("note   : d2 not on PATH — launching without compile check")
-        elif not result.ok and not force:
-            print("error  : refusing to launch — fix the graph or pass --force")
-            sys.exit(1)
-        elif not result.ok:
-            print("note   : launching anyway (--force)")
-    if run_editor is not None:
-        try:
-            argv = editor_argv(path)
-        except RuntimeError as exc:
-            sys.exit(f"error  : {exc}")
-        run_editor(argv)
-    elif not run_live_editor(path):
-        try:
-            argv = editor_argv(path)
-        except RuntimeError as exc:
-            sys.exit(f"error  : {exc}")
-        subprocess.run(argv)
-    text = path.read_text() if path.exists() else ""
-    (copy_text or copy_text_to_clipboard)(text)
-    log_activity("d2_edit", path)
-    print(f"saved  : {path}")
-    print("copied : d2 to clipboard")
-    print("note   : preview stays open and rerenders when the file changes")
-    return path
-
-
-def cmd_d2_open(
-    name: str = "",
-    notes_dir: str = str(DEFAULT_D2_DIR),
-    force: bool = False,
-    no_check: bool = False,
-) -> None:
-    open_d2(name, notes_dir, force=force, no_check=no_check)
+# --- compile / validate ---
 
 
 @dataclass(frozen=True)
@@ -132,6 +61,7 @@ class CheckResult:
     mode: str
     messages: tuple[str, ...]
     exit_code: int
+    status: str = "ok"  # ok | no_diagram | not_found | empty | invalid
 
 
 def clean_d2_message(msg: str) -> str:
@@ -204,23 +134,18 @@ def check_d2(
     strict: bool = False,
     validate: Callable[[str], tuple[bool, str]] | None = None,
 ) -> CheckResult:
-    """Full-compile a .d2 file. Does not create files."""
+    """Full-compile a .d2 file. Does not create files or print."""
     path = resolve_check_path(name, Path(notes_dir))
     mode = "strict" if strict else "preview"
     if path is None:
-        print("error  : no diagram — pass a name (anno d2 check pipeline)")
-        return CheckResult(None, False, mode, ("no diagram",), 2)
+        return CheckResult(None, False, mode, ("no diagram",), 2, "no_diagram")
     if not path.is_file():
-        print(f"error  : not found: {path}")
-        return CheckResult(path, False, mode, (f"not found: {path}",), 2)
+        return CheckResult(path, False, mode, (f"not found: {path}",), 2, "not_found")
 
     text = path.read_text()
     bodies = [text] if strict else sources_for_preview(text)
     if not any(body.strip() for body in bodies):
-        print(f"check  : {path}")
-        print(f"mode   : {mode}")
-        print("error  : empty d2")
-        return CheckResult(path, False, mode, ("empty d2",), 1)
+        return CheckResult(path, False, mode, ("empty d2",), 1, "empty")
 
     runner = validate or compile_d2
     messages: list[str] = []
@@ -233,20 +158,92 @@ def check_d2(
         if not body_ok:
             ok = False
         if cleaned:
-            if len(bodies) > 1:
-                messages.append(f"[{i + 1}] {cleaned}")
-            else:
-                messages.append(cleaned)
+            messages.append(f"[{i + 1}] {cleaned}" if len(bodies) > 1 else cleaned)
 
-    print(f"check  : {path}")
-    print(f"mode   : {mode}")
-    if ok:
-        print("ok     : valid D2")
-        return CheckResult(path, True, mode, tuple(messages), 0)
-    for msg in messages or ("compile failed",):
-        for line in msg.splitlines() or [msg]:
-            print(f"error  : {line}")
-    return CheckResult(path, False, mode, tuple(messages), 1)
+    return CheckResult(path, ok, mode, tuple(messages), 0 if ok else 1, "ok" if ok else "invalid")
+
+
+def check_lines(result: CheckResult) -> list[str]:
+    """Render a CheckResult as the labels `anno d2 check` prints."""
+    if result.status == "no_diagram":
+        return ["error  : no diagram — pass a name (anno d2 check pipeline)"]
+    if result.status == "not_found":
+        return [f"error  : not found: {result.path}"]
+    lines = [f"check  : {result.path}", f"mode   : {result.mode}"]
+    if result.ok:
+        lines.append("ok     : valid D2")
+    elif result.status == "empty":
+        lines.append("error  : empty d2")
+    else:
+        for msg in result.messages or ("compile failed",):
+            for line in msg.splitlines() or [msg]:
+                lines.append(f"error  : {line}")
+    return lines
+
+
+# --- find-or-create + edit ---
+
+
+def open_d2(
+    name: str = "",
+    notes_dir: str = str(DEFAULT_D2_DIR),
+    *,
+    force: bool = False,
+    no_check: bool = False,
+    run_editor: Callable[[list[str]], object] | None = None,
+    copy_text: Callable[[str], object] | None = None,
+    validate: Callable[[str], tuple[bool, str]] | None = None,
+) -> OpenResult:
+    name = name or ""
+    out_dir = Path(notes_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = d2_path(out_dir, name)
+    created = ensure_d2_file(path, path.stem)
+    messages = [f"{'created' if created else 'opening'}: {path}"]
+    if not no_check:
+        result = check_d2(str(path), str(out_dir), validate=validate)
+        messages.extend(check_lines(result))
+        missing = any("PATH" in m for m in result.messages)
+        if missing:
+            messages.append("note   : d2 not on PATH — launching without compile check")
+        elif not result.ok and not force:
+            messages.append("error  : refusing to launch — fix the graph or pass --force")
+            return OpenResult(path, created, copied=False, messages=tuple(messages), ok=False, exit_code=1)
+        elif not result.ok:
+            messages.append("note   : launching anyway (--force)")
+    try:
+        if run_editor is not None:
+            run_editor(editor_argv(path))
+        elif not run_live_editor(path):
+            subprocess.run(editor_argv(path))
+    except RuntimeError as exc:
+        messages.append(f"error  : {exc}")
+        return OpenResult(path, created, copied=False, messages=tuple(messages), ok=False, exit_code=1)
+    text = path.read_text() if path.exists() else ""
+    (copy_text or copy_text_to_clipboard)(text)
+    log_activity("d2_edit", path)
+    messages += [
+        f"saved  : {path}",
+        "copied : d2 to clipboard",
+        "note   : preview stays open and rerenders when the file changes",
+    ]
+    return OpenResult(path, created, copied=True, messages=tuple(messages))
+
+
+def _emit(result: OpenResult) -> None:
+    for line in result.messages:
+        print(line)
+    if not result.ok:
+        sys.exit(result.exit_code)
+
+
+def cmd_d2_open(
+    name: str = "",
+    notes_dir: str = str(DEFAULT_D2_DIR),
+    force: bool = False,
+    no_check: bool = False,
+) -> None:
+    _emit(open_d2(name, notes_dir, force=force, no_check=no_check))
 
 
 def cmd_d2_check(
@@ -255,4 +252,6 @@ def cmd_d2_check(
     strict: bool = False,
 ) -> None:
     result = check_d2(name or "", notes_dir, strict=strict)
+    for line in check_lines(result):
+        print(line)
     sys.exit(result.exit_code)
