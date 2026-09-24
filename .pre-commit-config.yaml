@@ -8,11 +8,9 @@ repos:
   - repo: local
     hooks:
       - id: help-svg
-        name: regenerate help.svg
-        entry: shellplot svg single "uv run anno --help" --output help.svg --font-size 20
-        language: python
-        additional_dependencies:
-          - git+https://github.com/wr1/shellplot
+        name: regenerate help.svg (local)
+        entry: bash -c 'command -v shellplot >/dev/null 2>&1 || exit 0; shellplot svg single "uv run anno --help" --output help.svg --font-size 20'
+        language: system
         files: ^(src/anno/.*\.py|pyproject\.toml)$
         pass_filenames: false
       - id: pytest-smoke
