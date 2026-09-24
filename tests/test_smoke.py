@@ -100,7 +100,7 @@ def test_all_workflows_smoke(tmp_path: Path, monkeypatch, capsys):
     _smoke_d2(tmp_path, monkeypatch)
     _smoke_cam(tmp_path, monkeypatch)
     _smoke_para(tmp_path, monkeypatch)
-    _smoke_list_log(tmp_path, log_file)
+    _smoke_list_log(tmp_path, log_file, monkeypatch)
     capsys.readouterr()
 
 
@@ -129,7 +129,8 @@ def _smoke_ink(tmp_path: Path, monkeypatch) -> None:
     shots = tmp_path / "shots"
     shots.mkdir()
     _tiny_png(shots / "latest.png")
-    ink.cmd_ink_screen(notes_dir=str(draw / "from_screen"), screenshots_dir=str(shots))
+    monkeypatch.setattr(ink, "DEFAULT_SCREENSHOTS_DIR", shots)
+    ink.cmd_ink_screen(notes_dir=str(draw / "from_screen"))
     assert list((draw / "from_screen").glob("*.svg"))
     assert len(opened) == 3
 
@@ -146,19 +147,16 @@ def _smoke_mind(tmp_path: Path, monkeypatch) -> None:
     notes_root.mkdir()
     plans_dir.mkdir()
 
+    monkeypatch.setattr("anno.mind.sync.DEFAULT_NOTES_ROOT", notes_root)
+    monkeypatch.setattr("anno.mind.sync.DEFAULT_PLANS_DIR", plans_dir)
+    monkeypatch.setattr("anno.mind.sync.copy_text_to_clipboard", lambda text: None)
     monkeypatch.setattr("anno.mind.sync.refuse_if_minder_running", lambda force: None)
     launched: list[object] = []
     monkeypatch.setattr(
         "anno.mind.sync.run_minder",
         lambda *a, **k: launched.append((a, k)),
     )
-    cmd_mind_open(
-        "smoke",
-        mind_dir=str(mind_dir),
-        notes_root=str(notes_root),
-        plans_dir=str(plans_dir),
-        no_clipboard=True,
-    )
+    cmd_mind_open("smoke", mind_dir=str(mind_dir))
     minder = mind_dir / "smoke.minder"
     assert minder.is_file()
     assert launched
@@ -177,7 +175,7 @@ def _smoke_mind(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("anno.mind.sync.minder_export_markdown", fake_export)
     imported = tmp_path / "imported"
     seed_minder(minder, root_title="smoke")
-    cmd_mind_import(str(minder), str(imported), no_clipboard=True)
+    cmd_mind_import(str(minder), str(imported))
     assert (imported / "Aim").is_dir()
 
 
@@ -275,7 +273,7 @@ def _smoke_para(tmp_path: Path, monkeypatch) -> None:
     assert launched
 
 
-def _smoke_list_log(tmp_path: Path, log_file: Path) -> None:
+def _smoke_list_log(tmp_path: Path, log_file: Path, monkeypatch) -> None:
     from anno.activity_log import cmd_log
     from anno.listing import cmd_list
 
@@ -289,6 +287,11 @@ def _smoke_list_log(tmp_path: Path, log_file: Path) -> None:
     (mind / "map.minder").write_text("<minder/>")
     (mer / "pipe.md").write_text("# p\n")
     (d2 / "flow.d2").write_text("a -> b\n")
-    cmd_list(str(draw), str(mind), str(mer), str(d2))
-    cmd_log(log_file=str(log_file))
-    cmd_log(date="1999-01-01", log_file=str(tmp_path / "missing.jsonl"))
+    monkeypatch.setattr("anno.listing.DEFAULT_DRAW_DIR", draw)
+    monkeypatch.setattr("anno.listing.DEFAULT_MIND_DIR", mind)
+    monkeypatch.setattr("anno.listing.DEFAULT_MERMAID_DIR", mer)
+    monkeypatch.setattr("anno.listing.DEFAULT_D2_DIR", d2)
+    cmd_list()
+    cmd_log()
+    monkeypatch.setattr("anno.activity_log.DEFAULT_LOG_FILE", tmp_path / "missing.jsonl")
+    cmd_log(date="1999-01-01")

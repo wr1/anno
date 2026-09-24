@@ -77,7 +77,7 @@ Mind maps stay in Minder. Graphviz `dot`/`neato` is later.
 ```sh
 anno d2                      # compile-check, then scratch preview
 anno d2 pipeline             # find-or-create + compile-check + preview
-anno d2 check pipeline       # full d2 compile (preview soften; --strict = raw)
+anno d2 check pipeline       # full d2 compile (softens notes to # comments)
 ```
 
 Find-or-create a `.d2` file and open a local D2 WASM preview in the browser. The command returns immediately. The preview **keeps running until you click Done** and rerenders when the file changes. Dump notes in the file — they become `#` comments and the graph still draws. The sidecar **refuses to save empty over a non-empty file**. `Failed to fetch` means the process died; Reconnect or run `anno d2 <name>` again — the buffer is not discarded. Connect **nodes**; put filenames on **edges**. Falls back to `$VISUAL` / `$EDITOR` / `gvim` / `code` if no browser is available.

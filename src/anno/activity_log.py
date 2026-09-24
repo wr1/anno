@@ -35,14 +35,13 @@ def read_activity(log_file: Optional[Path] = None) -> list[dict]:
 
 def cmd_log(
     date: Optional[str] = None,
-    log_file: str = str(DEFAULT_LOG_FILE),
 ) -> None:
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
     from rich.console import Console
     from rich.table import Table
 
-    log_path = Path(log_file)
+    log_path = Path(DEFAULT_LOG_FILE)
     if not log_path.exists():
         print("No activity log found.")
         return

@@ -198,9 +198,6 @@ def run_minder_smart_sync_folder(root_dir: Path, fs_depth: int, copy_clipboard: 
 def cmd_mind_import(
     minder_path: str,
     folder: str = "",
-    notes_root: str = str(DEFAULT_NOTES_ROOT),
-    fs_depth: int = DEFAULT_FS_DEPTH,
-    no_clipboard: bool = False,
 ) -> None:
     """Push a saved .minder back into a folder-sync .md tree.
 
@@ -213,30 +210,23 @@ def cmd_mind_import(
     if folder:
         root_dir = Path(folder).expanduser().resolve()
     else:
-        root_dir = (Path(notes_root) / minder_file.stem).resolve()
-    print(f"mode   : import ({minder_file} → {root_dir}/, fs-depth={fs_depth})")
+        root_dir = (Path(DEFAULT_NOTES_ROOT) / minder_file.stem).resolve()
+    print(f"mode   : import ({minder_file} → {root_dir}/, fs-depth={DEFAULT_FS_DEPTH})")
     try:
-        out_tree = push_minder_to_folder(minder_file, root_dir, fs_depth)
+        out_tree = push_minder_to_folder(minder_file, root_dir, DEFAULT_FS_DEPTH)
     except RuntimeError as exc:
         sys.exit(f"error  : {exc}")
     print(f"saved  : {root_dir}/ ({len(flatten(out_tree)) - 1} nodes)")
-    if not no_clipboard:
-        copy_text_to_clipboard(tree_to_numbered_markdown(out_tree))
-        print("copied : markdown to clipboard")
+    copy_text_to_clipboard(tree_to_numbered_markdown(out_tree))
+    print("copied : markdown to clipboard")
 
 
 def cmd_mind_open(
     name: str = "",
     mind_dir: str = str(DEFAULT_MIND_DIR),
-    notes_root: str = str(DEFAULT_NOTES_ROOT),
-    plans_dir: str = str(DEFAULT_PLANS_DIR),
-    fs_depth: int = DEFAULT_FS_DEPTH,
-    no_clipboard: bool = False,
-    force: bool = False,
     template: str = "",
 ) -> None:
-    refuse_if_minder_running(force)
-    copy_clipboard = not no_clipboard
+    refuse_if_minder_running(False)
     if not name:
         # No name: open a fresh timestamped scratch map.
         out_dir = Path(mind_dir).resolve()
@@ -248,13 +238,13 @@ def cmd_mind_open(
             seed_minder(minder_file, root_title=minder_file.stem, template=template)
         except TemplateNotFoundError as exc:
             sys.exit(str(exc))
-        run_minder(minder_file, minder_file.with_suffix(".md"), force, copy_clipboard=copy_clipboard)
+        run_minder(minder_file, minder_file.with_suffix(".md"), False, copy_clipboard=True)
         return
     mode, target = resolve_open_target(
         name,
         Path(mind_dir).resolve(),
-        Path(notes_root).resolve(),
-        Path(plans_dir).resolve(),
+        Path(DEFAULT_NOTES_ROOT).resolve(),
+        Path(DEFAULT_PLANS_DIR).resolve(),
     )
     use_template = template if template_applies(mode, target) else ""
     if template and not use_template:
@@ -262,10 +252,10 @@ def cmd_mind_open(
     if mode == "legacy":
         print(f"mode   : legacy ({target})")
         md_file = target.with_suffix(".md")
-        run_minder(target, md_file, force, copy_clipboard=copy_clipboard)
+        run_minder(target, md_file, False, copy_clipboard=True)
     elif mode == "plan":
         try:
-            run_minder_smart_sync_plan(target, copy_clipboard, force, template=use_template)
+            run_minder_smart_sync_plan(target, True, False, template=use_template)
         except TemplateNotFoundError as exc:
             sys.exit(str(exc))
     elif mode == "new":
@@ -279,6 +269,6 @@ def cmd_mind_open(
             except TemplateNotFoundError as exc:
                 sys.exit(str(exc))
         md_file = target.with_suffix(".md")
-        run_minder(target, md_file, force, copy_clipboard=copy_clipboard)
+        run_minder(target, md_file, False, copy_clipboard=True)
     else:
-        run_minder_smart_sync_folder(target, fs_depth, copy_clipboard, force)
+        run_minder_smart_sync_folder(target, DEFAULT_FS_DEPTH, True, False)

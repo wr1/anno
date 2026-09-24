@@ -241,17 +241,15 @@ def cmd_d2_open(
     name: str = "",
     notes_dir: str = str(DEFAULT_D2_DIR),
     force: bool = False,
-    no_check: bool = False,
 ) -> None:
-    _emit(open_d2(name, notes_dir, force=force, no_check=no_check))
+    _emit(open_d2(name, notes_dir, force=force))
 
 
 def cmd_d2_check(
     name: str = "",
     notes_dir: str = str(DEFAULT_D2_DIR),
-    strict: bool = False,
 ) -> None:
-    result = check_d2(name or "", notes_dir, strict=strict)
+    result = check_d2(name or "", notes_dir)
     for line in check_lines(result):
         print(line)
     sys.exit(result.exit_code)

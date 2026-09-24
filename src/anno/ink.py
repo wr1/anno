@@ -144,9 +144,8 @@ def cmd_ink_fig(file: Optional[str] = None, notes_dir: str = str(DEFAULT_DRAW_DI
 
 def cmd_ink_screen(
     notes_dir: str = str(DEFAULT_DRAW_DIR),
-    screenshots_dir: str = str(DEFAULT_SCREENSHOTS_DIR),
 ) -> None:
-    scr_dir = Path(screenshots_dir)
+    scr_dir = Path(DEFAULT_SCREENSHOTS_DIR)
     pngs = sorted(scr_dir.glob("*.png"), key=lambda p: p.stat().st_mtime)
     if not pngs:
         sys.exit(f"No PNGs found in {scr_dir}")

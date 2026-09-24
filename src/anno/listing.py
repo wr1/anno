@@ -57,16 +57,16 @@ def collect_entries(
     return entries
 
 
-def cmd_list(
-    notes_dir: str = str(DEFAULT_DRAW_DIR),
-    mind_dir: str = str(DEFAULT_MIND_DIR),
-    mermaid_dir: str = str(DEFAULT_MERMAID_DIR),
-    d2_dir: str = str(DEFAULT_D2_DIR),
-) -> None:
+def cmd_list() -> None:
     from rich.console import Console
     from rich.table import Table
 
-    entries = collect_entries(notes_dir, mind_dir, mermaid_dir, d2_dir)
+    entries = collect_entries(
+        str(DEFAULT_DRAW_DIR),
+        str(DEFAULT_MIND_DIR),
+        str(DEFAULT_MERMAID_DIR),
+        str(DEFAULT_D2_DIR),
+    )
     if not entries:
         print("No annotations found.")
         return

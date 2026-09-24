@@ -6,14 +6,9 @@ from anno.cam import cmd_cam
 from anno.constants import (
     DEFAULT_D2_DIR,
     DEFAULT_DRAW_DIR,
-    DEFAULT_FS_DEPTH,
-    DEFAULT_LOG_FILE,
     DEFAULT_MERMAID_DIR,
     DEFAULT_MIND_DIR,
-    DEFAULT_NOTES_ROOT,
     DEFAULT_PARA_NOTES_DIR,
-    DEFAULT_PLANS_DIR,
-    DEFAULT_SCREENSHOTS_DIR,
 )
 from anno.d2 import cmd_d2_check, cmd_d2_open
 from anno.ink import cmd_ink_fig, cmd_ink_open, cmd_ink_screen
@@ -57,14 +52,6 @@ _cam_notes_option = option(
     help="Directory to save webcam captures",
     sort_key=10,
 )
-_screenshots_option = option(
-    flags=["--screenshots-dir", "-s"],
-    dest="screenshots_dir",
-    arg_type=str,
-    default=str(DEFAULT_SCREENSHOTS_DIR),
-    help="Directory to search for screenshots",
-    sort_key=11,
-)
 _mind_dir_option = option(
     flags=["--mind-dir", "-m"],
     dest="mind_dir",
@@ -73,46 +60,6 @@ _mind_dir_option = option(
     help="Directory for legacy .minder files",
     sort_key=10,
 )
-_notes_root_option = option(
-    flags=["--notes-root"],
-    dest="notes_root",
-    arg_type=str,
-    default=str(DEFAULT_NOTES_ROOT),
-    help="Root for folder-sync lookup (notes/<name>/)",
-    sort_key=11,
-)
-_plans_dir_option = option(
-    flags=["--plans-dir"],
-    dest="plans_dir",
-    arg_type=str,
-    default=str(DEFAULT_PLANS_DIR),
-    help="Directory holding single-file plan .md sources",
-    sort_key=12,
-)
-_fs_depth_option = option(
-    flags=["--fs-depth"],
-    dest="fs_depth",
-    arg_type=int,
-    default=DEFAULT_FS_DEPTH,
-    help="Folder-sync: # of child layers stored as folders (deeper → index.md)",
-    sort_key=13,
-)
-_no_clipboard_option = option(
-    flags=["--no-clipboard"],
-    dest="no_clipboard",
-    arg_type=bool,
-    default=False,
-    help="Skip copying exported markdown to the clipboard",
-    sort_key=14,
-)
-_force_option = option(
-    flags=["--force", "-f"],
-    dest="force",
-    arg_type=bool,
-    default=False,
-    help="Replace a running Minder instead of refusing (kills the open window)",
-    sort_key=15,
-)
 _template_option = option(
     flags=["--template", "-t"],
     dest="template",
@@ -120,22 +67,6 @@ _template_option = option(
     default="",
     help="Seed a fresh map from a template (e.g. 'software'). Ignored when opening existing content.",
     sort_key=16,
-)
-_list_mermaid_dir_option = option(
-    flags=["--mermaid-dir"],
-    dest="mermaid_dir",
-    arg_type=str,
-    default=str(DEFAULT_MERMAID_DIR),
-    help="Directory for mermaid markdown",
-    sort_key=12,
-)
-_list_d2_dir_option = option(
-    flags=["--d2-dir"],
-    dest="d2_dir",
-    arg_type=str,
-    default=str(DEFAULT_D2_DIR),
-    help="Directory for D2 diagrams",
-    sort_key=13,
 )
 _d2_notes_option = option(
     flags=["--notes-dir", "-d"],
@@ -161,15 +92,6 @@ _para_notes_option = option(
     help="Directory to save ParaView exports",
     sort_key=10,
 )
-_log_option = option(
-    flags=["--log-file", "-l"],
-    dest="log_file",
-    arg_type=str,
-    default=str(DEFAULT_LOG_FILE),
-    help="Path to the JSONL activity log",
-    sort_key=12,
-)
-
 ink_group = group(
     name="ink",
     help="Annotate figures with Inkscape. On close: saves SVG, copies result as PNG to clipboard.",
@@ -198,7 +120,7 @@ ink_group.commands.append(
         name="screen",
         help="Open the latest screenshot in Inkscape.",
         callback=cmd_ink_screen,
-        options=[_notes_option, _screenshots_option],
+        options=[_notes_option],
     )
 )
 app.subgroups.append(ink_group)
@@ -221,11 +143,6 @@ mind_group.commands.append(
         arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
         options=[
             _mind_dir_option,
-            _notes_root_option,
-            _plans_dir_option,
-            _fs_depth_option,
-            _no_clipboard_option,
-            _force_option,
             _template_option,
         ],
     )
@@ -240,11 +157,6 @@ mind_group.commands.append(
         arguments=[
             argument(name="minder_path", arg_type=str, sort_key=0),
             argument(name="folder", arg_type=str, nargs="?", default="", sort_key=1),
-        ],
-        options=[
-            _notes_root_option,
-            _fs_depth_option,
-            _no_clipboard_option,
         ],
     )
 )
@@ -293,14 +205,6 @@ d2_group.commands.append(
                 help="Open the preview even if compile-check fails",
                 sort_key=11,
             ),
-            option(
-                flags=["--no-check"],
-                dest="no_check",
-                arg_type=bool,
-                default=False,
-                help="Skip the compile-check before launch",
-                sort_key=12,
-            ),
         ],
     )
 )
@@ -310,17 +214,7 @@ d2_group.commands.append(
         help="Full-compile a .d2 file (d2 → SVG). Catches markdown errors validate misses.",
         callback=cmd_d2_check,
         arguments=[argument(name="name", arg_type=str, nargs="?", default=None, sort_key=0)],
-        options=[
-            _d2_notes_option,
-            option(
-                flags=["--strict"],
-                dest="strict",
-                arg_type=bool,
-                default=False,
-                help="Validate the raw file without softening notes to # comments",
-                sort_key=11,
-            ),
-        ],
+        options=[_d2_notes_option],
     )
 )
 app.subgroups.append(d2_group)
@@ -366,7 +260,6 @@ app.commands.append(
         name="list",
         help="List saved annotations, mind maps, mermaid graphs, and D2 diagrams.",
         callback=cmd_list,
-        options=[_notes_option, _mind_dir_option, _list_mermaid_dir_option, _list_d2_dir_option],
     )
 )
 
@@ -376,7 +269,6 @@ app.commands.append(
         help="Show activity log for a given date (default: today).",
         callback=cmd_log,
         arguments=[argument(name="date", arg_type=str, nargs="?", default=None, sort_key=0)],
-        options=[_log_option],
     )
 )
 

@@ -5,3 +5,11 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: pytest-smoke
+        name: pytest (CLI smoke)
+        entry: uv run --with pytest --with-editable . pytest -q tests/test_smoke.py
+        language: system
+        pass_filenames: false
+        always_run: true
