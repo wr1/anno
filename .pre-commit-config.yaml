@@ -7,6 +7,14 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
+      - id: help-svg
+        name: regenerate help.svg
+        entry: shellplot svg single "uv run anno --help" --output help.svg --font-size 20
+        language: python
+        additional_dependencies:
+          - git+https://github.com/wr1/shellplot
+        files: ^(src/anno/.*\.py|pyproject\.toml)$
+        pass_filenames: false
       - id: pytest-smoke
         name: pytest (CLI smoke)
         entry: uv run --with pytest --with-editable . pytest -q tests/test_smoke.py
